@@ -1,0 +1,14 @@
+network:
+  version: 2
+  ethernets:
+    eth0:
+      dhcp4: true
+      dhcp4-overrides:
+        use-routes: false
+      routes:
+        - to: default
+          via: "{{ edge_private_ip }}"
+      nameservers:
+        addresses:
+          - 8.8.8.8
+          - 8.8.4.4

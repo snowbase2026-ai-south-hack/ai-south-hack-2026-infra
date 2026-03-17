@@ -1,117 +1,121 @@
 # Документация модулей AI Talent Camp Infrastructure
 
-> **Последнее обновление:** 2026-01-29  
+> **Последнее обновление:** 2026-03-17
 > **Связанные документы:** [architecture.md](architecture.md), [admin-guide.md](admin-guide.md)
 
 ## Обзор
 
-Инфраструктура состоит из следующих Terraform модулей:
+Инфраструктура состоит из Terraform модулей для провизионинга и Ansible ролей для конфигурации.
 
+**Terraform модули** (провизионинг VM, сетей, ключей):
 ```
 modules/
-├── network/     # VPC и подсети
-├── security/    # Security groups
-├── routing/     # Route tables для NAT
-├── edge/        # Edge/NAT VM с Traefik + Xray + TPROXY
-└── team_vm/     # VM для команд
+├── network/           # Подсети (public + private)
+├── security/          # Security groups
+├── edge/              # Edge/NAT VM с floating IP
+├── team_vm/           # VM для команд
+└── team-credentials/  # Управление SSH-ключами и credentials
+```
+
+**Ansible роли** (постнастройка серверов):
+```
+ansible/roles/
+├── common/    # Базовые пакеты
+├── docker/    # Docker + Docker Compose
+├── nat/       # NAT (iptables MASQUERADE + hairpin NAT)
+├── traefik/   # Traefik reverse proxy (Docker)
+└── xray/      # Xray transparent proxy (systemd)
 ```
 
 ---
 
-## Module: network
+## Terraform модули
 
-### Назначение
+### Module: network
 
-Создает VPC сеть с публичной подсетью. Приватная подсеть создаётся отдельно с route table.
+#### Назначение
 
-### Ресурсы
+Создает публичную и приватную подсети. В Cloud.ru Evolution нет ресурса VPC -- подсети создаются как самостоятельные ресурсы.
 
-- `yandex_vpc_network` - основная VPC
-- `yandex_vpc_subnet.public` - публичная подсеть для edge VM
-- `yandex_vpc_subnet.private` - приватная подсеть (опционально, если `create_private_subnet = true`)
+#### Ресурсы
 
-### Входные переменные
+- `cloudru_evolution_subnet.public` -- публичная подсеть для edge VM (с `routed_network = true`)
+- `cloudru_evolution_subnet.private` -- приватная подсеть для team VMs
 
-| Переменная | Тип | Описание | По умолчанию |
-|------------|-----|----------|--------------|
-| `network_name` | string | Имя VPC | - |
-| `zone` | string | Зона доступности | - |
-| `public_cidr` | string | CIDR публичной подсети | - |
-| `private_cidr` | string | CIDR приватной подсети | - |
-| `route_table_id` | string | ID route table для приватной подсети | null |
-| `create_private_subnet` | bool | Создавать приватную подсеть | true |
+#### Входные переменные
 
-**Примечание:** В `environments/dev/main.tf` приватная подсеть создаётся отдельно с route table, поэтому `create_private_subnet = false` передаётся в модуль.
+| Переменная | Тип | Описание |
+|------------|-----|----------|
+| `public_cidr` | string | CIDR публичной подсети |
+| `private_cidr` | string | CIDR приватной подсети |
+| `availability_zone_id` | string | ID зоны доступности |
+| `project_name` | string | Имя проекта для именования ресурсов |
 
-### Outputs
+#### Outputs
 
 | Output | Описание |
 |--------|----------|
-| `network_id` | ID VPC |
-| `public_subnet_id` | ID публичной подсети |
-| `private_subnet_id` | ID приватной подсети (null если не создана) |
-| `public_subnet_cidr` | CIDR публичной подсети |
-| `private_subnet_cidr` | CIDR приватной подсети |
+| `public_subnet_name` | Имя публичной подсети |
+| `private_subnet_name` | Имя приватной подсети |
 
-### Пример использования
+#### Пример использования
 
 ```hcl
 module "network" {
   source = "../../modules/network"
 
-  network_name          = "ai-camp-network"
-  zone                  = "ru-central1-a"
-  public_cidr           = "10.0.1.0/24"
-  private_cidr          = "10.0.2.0/24"
-  create_private_subnet = false  # Создаётся отдельно с route table
-  route_table_id        = null
+  public_cidr          = "10.0.1.0/24"
+  private_cidr         = "10.0.2.0/24"
+  availability_zone_id = local.az.id
+  project_name         = var.project_name
 }
 ```
 
 ---
 
-## Module: security
+### Module: security
 
-### Назначение
+#### Назначение
 
-Создает security groups для edge и team VMs.
+Создает security groups для edge и team VMs. Правила задаются inline (`rules {}` блоки), источник -- CIDR (`remote_ip_prefix`).
 
-### Ресурсы
+#### Ресурсы
 
-- `yandex_vpc_security_group.edge` - SG для edge VM
-- `yandex_vpc_security_group.team` - SG для team VMs
+- `cloudru_evolution_security_group.edge` -- SG для edge VM
+- `cloudru_evolution_security_group.team` -- SG для team VMs
 
-### Правила Edge SG
+#### Правила Edge SG
 
 | Направление | Протокол | Порт | Источник |
 |-------------|----------|------|----------|
 | Ingress | TCP | 22 | 0.0.0.0/0 |
 | Ingress | TCP | 80 | 0.0.0.0/0 |
 | Ingress | TCP | 443 | 0.0.0.0/0 |
-| Ingress | ANY | - | private_subnet_cidr |
+| Ingress | ANY | - | private_cidr |
 | Ingress | ICMP | - | 0.0.0.0/0 |
 | Egress | ANY | - | 0.0.0.0/0 |
 
-### Правила Team SG
+#### Правила Team SG
 
 | Направление | Протокол | Порт | Источник |
 |-------------|----------|------|----------|
-| Ingress | TCP | 22 | Edge SG |
-| Ingress | TCP | 80 | Edge SG |
-| Ingress | TCP | 443 | Edge SG |
-| Ingress | ANY | - | self_security_group |
-| Ingress | ICMP | - | Edge SG |
+| Ingress | TCP | 22 | public_cidr |
+| Ingress | TCP | 80 | public_cidr |
+| Ingress | TCP | 443 | public_cidr |
+| Ingress | ANY | - | private_cidr |
+| Ingress | ICMP | - | public_cidr |
 | Egress | ANY | - | 0.0.0.0/0 |
 
-### Входные переменные
+#### Входные переменные
 
 | Переменная | Тип | Описание |
 |------------|-----|----------|
 | `name` | string | Базовое имя для ресурсов |
-| `network_id` | string | ID VPC |
-| `private_subnet_cidr` | string | CIDR приватной подсети |
+| `public_cidr` | string | CIDR публичной подсети |
+| `private_cidr` | string | CIDR приватной подсети |
+| `availability_zone_id` | string | ID зоны доступности |
 
-### Outputs
+#### Outputs
 
 | Output | Описание |
 |--------|----------|
@@ -120,363 +124,246 @@ module "network" {
 
 ---
 
-## Module: routing
+### Module: edge
 
-### Назначение
+#### Назначение
 
-Создает route table для маршрутизации трафика через NAT VM.
+Создает edge/NAT VM с floating IP и двумя сетевыми интерфейсами (public + private subnet).
 
-### Ресурсы
+#### Ресурсы
 
-- `yandex_vpc_route_table.nat` - таблица маршрутизации
+- `cloudru_evolution_compute.edge` -- VM instance
+- `cloudru_evolution_floatingip.edge` -- Floating IP (публичный адрес)
 
-### Маршрут
+Все компоненты (Docker, Traefik, Xray, NAT) устанавливаются и настраиваются через Ansible, а не через cloud-init.
 
-| Destination | Next Hop |
-|-------------|----------|
-| 0.0.0.0/0 | Edge VM private IP |
-
-### Входные переменные
+#### Входные переменные
 
 | Переменная | Тип | Описание |
 |------------|-----|----------|
-| `name` | string | Базовое имя |
-| `network_id` | string | ID VPC |
-| `nat_gateway_ip` | string | Private IP edge VM |
+| `flavor_id` | string | ID типа VM |
+| `disk_type_id` | string | ID типа диска |
+| `disk_size` | number | Размер диска (GB) |
+| `availability_zone_id` | string | ID зоны доступности |
+| `availability_zone_name` | string | Имя зоны доступности |
+| `public_subnet_name` | string | Имя публичной подсети |
+| `private_subnet_name` | string | Имя приватной подсети |
+| `security_group_id` | string | ID edge security group |
+| `user_name` | string | Username для SSH |
+| `public_key` | string | SSH public key (админский) |
+| `private_ip` | string | Приватный IP в private subnet |
 
-### Outputs
-
-| Output | Описание |
-|--------|----------|
-| `route_table_id` | ID route table |
-
----
-
-## Module: edge
-
-### Назначение
-
-Создает edge/NAT VM с Traefik, Xray (TPROXY) и NAT.
-
-### Ресурсы
-
-- `yandex_compute_instance.edge` - VM instance
-
-### Компоненты (устанавливаются через cloud-init)
-
-- **Docker + Docker Compose** - контейнеризация для Traefik
-- **Traefik** (Docker контейнер) - reverse proxy с TLS passthrough
-- **Xray** (systemd сервис) - transparent proxy через TPROXY для AI API
-- **NAT** (iptables masquerade) - маршрутизация исходящего трафика
-- **TPROXY** (iptables mangle + policy routing) - прозрачное проксирование
-
-**Важно:** Traefik работает как Docker контейнер, а Xray как нативный systemd сервис для поддержки TPROXY с `IP_TRANSPARENT` socket option.
-
-### TPROXY настройки
-
-TPROXY перехватывает весь трафик из private subnet и маршрутизирует через Xray:
-
-- Policy routing: `ip rule add fwmark 1 table 100`
-- iptables mangle chain XRAY для перехвата TCP/UDP
-- Исключения: private networks (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16) и VLESS server IP
-- TPROXY redirect на порт 12345 (Xray dokodemo-door)
-
-### Входные переменные
-
-| Переменная | Тип | Описание | По умолчанию |
-|------------|-----|----------|--------------|
-| `name` | string | Базовое имя | - |
-| `zone` | string | Зона доступности | - |
-| `platform` | string | Platform ID | standard-v3 |
-| `cores` | number | CPU cores | 2 |
-| `memory` | number | RAM (GB) | 4 |
-| `disk_size` | number | Disk (GB) | 20 |
-| `core_fraction` | number | Guaranteed vCPU share | 100 |
-| `preemptible` | bool | Прерываемая VM | false |
-| `public_subnet_id` | string | ID публичной подсети | - |
-| `edge_sg_id` | string | ID edge SG | - |
-| `private_subnet_cidr` | string | CIDR приватной подсети | - |
-| `jump_user` | string | Username для SSH | jump |
-| `jump_public_key` | string | SSH public key (админский) | - |
-| `team_jump_keys` | list(string) | SSH public keys команд для bastion | [] |
-| `vless_server_ip` | string | VLESS server IP (исключается из TPROXY) | "" |
-| `traefik_config` | string | Конфиг Traefik | - |
-| `xray_config` | string | Конфиг Xray | - |
-
-### Outputs
+#### Outputs
 
 | Output | Описание |
 |--------|----------|
-| `edge_public_ip` | Публичный IP |
-| `edge_private_ip` | Приватный IP |
-| `edge_instance_id` | Instance ID |
-| `edge_fqdn` | FQDN |
+| `public_ip` | Публичный (floating) IP |
+| `private_ip` | Приватный IP |
 
-### Пример использования
+#### Пример использования
 
 ```hcl
 module "edge" {
   source = "../../modules/edge"
 
-  name                = "ai-camp"
-  zone                = "ru-central1-a"
-  cores               = 2
-  memory              = 4
-  disk_size           = 20
-  core_fraction       = 100
-  public_subnet_id    = module.network.public_subnet_id
-  edge_sg_id          = module.security.edge_sg_id
-  private_subnet_cidr = "10.0.2.0/24"
-  jump_user           = "jump"
-  jump_public_key     = var.jump_public_key
-  team_jump_keys      = local.team_jump_public_keys
-  vless_server_ip     = var.vless_server_ip
-  traefik_config      = local.traefik_config
-  xray_config         = local.xray_config
+  flavor_id              = local.edge_flavor.id
+  disk_type_id           = local.ssd_disk_type.id
+  disk_size              = var.edge_disk_size
+  availability_zone_id   = local.az.id
+  availability_zone_name = var.availability_zone_name
+  public_subnet_name     = module.network.public_subnet_name
+  private_subnet_name    = module.network.private_subnet_name
+  security_group_id      = module.security.edge_sg_id
+  user_name              = var.jump_user
+  public_key             = var.jump_public_key
+  private_ip             = cidrhost(var.private_cidr, 1)
+
+  depends_on = [module.network, module.security]
 }
 ```
 
 ---
 
-## Module: team_vm
+### Module: team_vm
 
-### Назначение
+#### Назначение
 
-Создает VM для команды в приватной подсети.
+Создает VM для команд в приватной подсети со статическими IP-адресами.
 
-### Ресурсы
+#### Ресурсы
 
-- `yandex_compute_instance.team` - VM instance
+- `cloudru_evolution_compute.team` -- VM instance (for_each по teams)
 
-### Компоненты (устанавливаются через cloud-init)
+#### Входные переменные
 
-- Минимальная конфигурация Ubuntu 22.04
-- Пользователь с sudo правами
-- Рабочая директория `/home/<user>/workspace`
+| Переменная | Тип | Описание |
+|------------|-----|----------|
+| `teams` | map(object) | Конфигурация команд (user, public_keys, ip) |
+| `flavor_id` | string | ID типа VM |
+| `disk_type_id` | string | ID типа диска |
+| `disk_size` | number | Размер диска (GB) |
+| `availability_zone_name` | string | Имя зоны доступности |
+| `private_subnet_name` | string | Имя приватной подсети |
+| `security_group_id` | string | ID team security group |
+| `team_public_keys` | map(string) | Сгенерированные SSH public keys |
 
-**Команды устанавливают всё необходимое сами** (Docker, Nginx, языки программирования и т.д.)
-
-### Входные переменные
-
-| Переменная | Тип | Описание | По умолчанию |
-|------------|-----|----------|--------------|
-| `name` | string | Базовое имя | - |
-| `team_id` | string | ID команды | - |
-| `zone` | string | Зона доступности | - |
-| `platform` | string | Platform ID | standard-v3 |
-| `cores` | number | CPU cores | 4 |
-| `memory` | number | RAM (GB) | 8 |
-| `disk_size` | number | Disk (GB) | 65 |
-| `core_fraction` | number | Guaranteed vCPU share | 100 |
-| `preemptible` | bool | Прерываемая VM | false |
-| `private_subnet_id` | string | ID приватной подсети | - |
-| `team_sg_id` | string | ID team SG | - |
-| `team_user` | string | Username | - |
-| `public_keys` | list(string) | SSH public keys | - |
-| `domain` | string | Базовый домен | camp.aitalenthub.ru |
-
-### Outputs
+#### Outputs
 
 | Output | Описание |
 |--------|----------|
-| `private_ip` | Приватный IP |
-| `instance_id` | Instance ID |
-| `fqdn` | FQDN |
-| `hostname` | Hostname |
+| `team_ips` | Map team_id -> private IP |
 
-### Пример использования
+#### Пример использования
 
 ```hcl
 module "team_vm" {
   source = "../../modules/team_vm"
 
-  name              = "ai-camp"
-  team_id           = "01"
-  zone              = "ru-central1-a"
-  cores             = 4
-  memory            = 8
-  disk_size         = 65
-  core_fraction     = 100
-  private_subnet_id = yandex_vpc_subnet.private.id
-  team_sg_id        = module.security.team_sg_id
-  team_user         = "team01"
-  public_keys       = ["ssh-ed25519 AAAA..."]
-  domain            = "camp.aitalenthub.ru"
+  teams                  = var.teams
+  flavor_id              = local.team_flavor.id
+  disk_type_id           = local.ssd_disk_type.id
+  disk_size              = var.team_disk_size
+  availability_zone_name = var.availability_zone_name
+  private_subnet_name    = module.network.private_subnet_name
+  security_group_id      = module.security.team_sg_id
+
+  team_public_keys = {
+    for team_id, key in tls_private_key.team_vm_key : team_id => key.public_key_openssh
+  }
+
+  depends_on = [module.network, module.security]
 }
 ```
 
 ---
 
-## Module: team-credentials
+### Module: team-credentials
 
-### Назначение
+#### Назначение
 
 Управляет SSH ключами команд и генерирует credentials файлы.
 
-### Ресурсы
+#### Ресурсы
 
-- `local_file.team_jump_private_key` - приватный ключ для bastion
-- `local_file.team_vm_private_key` - приватный ключ для VM
-- `local_file.team_github_private_key` - приватный ключ для GitHub/CI
-- `local_file.team_ssh_config` - готовый SSH конфиг
-- `local_file.teams_credentials_json` - сводка всех команд в JSON
+- `local_file` -- приватные/публичные ключи для bastion, VM и GitHub
+- `local_file` -- готовый SSH конфиг для каждой команды
 
-### Входные переменные
+#### Входные переменные
 
 | Переменная | Тип | Описание |
 |------------|-----|----------|
-| `teams` | map(object) | Конфигурация команд |
-| `bastion_host` | string | Hostname bastion сервера |
+| `teams` | map(object) | Конфигурация команд (user, private_ip) |
+| `domain` | string | Базовый домен |
+| `jump_user` | string | Username для bastion |
+| `bastion_ip` | string | Публичный IP bastion |
 | `team_jump_private_keys` | map(string) | Приватные ключи для bastion |
+| `team_jump_public_keys` | map(string) | Публичные ключи для bastion |
 | `team_vm_private_keys` | map(string) | Приватные ключи для VM |
+| `team_vm_public_keys` | map(string) | Публичные ключи для VM |
 | `team_github_private_keys` | map(string) | Приватные ключи для GitHub |
+| `team_github_public_keys` | map(string) | Публичные ключи для GitHub |
 
-### Outputs
+#### Генерируемые файлы
 
-| Output | Описание |
-|--------|----------|
-| `credentials_folders` | Пути к папкам с credentials |
-
-### Генерируемые файлы
-
-Для каждой команды создаётся папка `secrets/team-XX/` с файлами:
+Для каждой команды создаётся папка `secrets/team-<key>/` с файлами:
 
 ```
-secrets/team-01/
-├── team01-jump-key          # Приватный ключ для bastion
-├── team01-jump-key.pub      # Публичный ключ для bastion  
-├── team01-key               # Приватный ключ для VM
-├── team01-key.pub           # Публичный ключ для VM
-├── team01-deploy-key        # Приватный ключ для GitHub
-├── team01-deploy-key.pub    # Публичный ключ для GitHub
+secrets/team-team01/
+├── <user>-jump-key          # Приватный ключ для bastion
+├── <user>-jump-key.pub      # Публичный ключ для bastion
+├── <user>-key               # Приватный ключ для VM
+├── <user>-key.pub           # Публичный ключ для VM
+├── <user>-deploy-key        # Приватный ключ для GitHub
+├── <user>-deploy-key.pub    # Публичный ключ для GitHub
 └── ssh-config               # Готовый SSH конфиг
 ```
 
-### Пример использования
-
-```hcl
-module "team_credentials" {
-  source = "../../modules/team-credentials"
-
-  teams                     = var.teams
-  bastion_host              = var.bastion_host
-  team_jump_private_keys    = { for k, v in tls_private_key.team_jump_key : k => v.private_key_openssh }
-  team_jump_public_keys     = { for k, v in tls_private_key.team_jump_key : k => v.public_key_openssh }
-  team_vm_private_keys      = { for k, v in tls_private_key.team_vm_key : k => v.private_key_openssh }
-  team_vm_public_keys       = { for k, v in tls_private_key.team_vm_key : k => v.public_key_openssh }
-  team_github_private_keys  = { for k, v in tls_private_key.team_github_key : k => v.private_key_openssh }
-  team_github_public_keys   = { for k, v in tls_private_key.team_github_key : k => v.public_key_openssh }
-}
-```
-
-**Преимущества:**
-- Изолированное управление credentials
-- Независимые обновления без влияния на инфраструктуру
-- Автоматическая генерация SSH конфигов
-
 ---
 
-## Module: config-sync
+## Ansible роли
 
-### Назначение
+### Role: common
 
-Синхронизирует конфигурационные файлы на серверы.
+Устанавливает базовые пакеты: curl, wget, htop, jq, unzip, net-tools.
 
-### Ресурсы
+**Применяется к:** edge VM, team VMs
 
-- `local_file.traefik_dynamic_config` - динамическая конфигурация Traefik
-- `null_resource.sync_xray_config` - синхронизация Xray конфига
-- `null_resource.sync_traefik_configs` - синхронизация Traefik конфигов
-- `null_resource.sync_team_jump_keys` - синхронизация jump ключей
+### Role: docker
 
-### Входные переменные
+Устанавливает Docker CE, Docker CLI, containerd и docker-compose-plugin. Добавляет пользователя в группу docker.
 
-| Переменная | Тип | Описание |
-|------------|-----|----------|
-| `edge_public_ip` | string | Публичный IP edge VM |
-| `jump_private_key_path` | string | Путь к приватному ключу jump |
-| `teams` | map(object) | Конфигурация команд |
-| `xray_config_path` | string | Путь к xray-config.json |
-| `traefik_config` | string | Содержимое traefik.yml |
+**Применяется к:** edge VM, team VMs
 
-### Outputs
+### Role: nat
 
-Модуль не имеет outputs.
+Настраивает edge VM как NAT-шлюз:
+- Включает IP forwarding (`net.ipv4.ip_forward=1`)
+- Устанавливает iptables-persistent
+- Настраивает MASQUERADE для private subnet
+- Настраивает hairpin NAT (DNAT + MASQUERADE для обращений из private subnet к публичному IP edge)
 
-### Процесс синхронизации
+**Применяется к:** edge VM
 
-1. **Xray конфигурация:**
-   - Копирует `secrets/xray-config.json` на edge VM
-   - Перезапускает Xray сервис
-   - Проверяет статус после перезапуска
+### Role: traefik
 
-2. **Traefik конфигурация:**
-   - Генерирует динамическую конфигурацию для teams
-   - Копирует статическую и динамическую конфигурации
-   - Traefik автоматически подхватывает изменения
+Развертывает Traefik reverse proxy как Docker-контейнер:
+- Создает директории `/etc/traefik/` и `/etc/traefik/dynamic/`
+- Развертывает статическую конфигурацию из Jinja2-шаблона
+- Генерирует динамическую конфигурацию для team routing
+- Запускает контейнер с `network_mode: host`
 
-3. **Jump ключи:**
-   - Синхронизирует публичные ключи команд на bastion
-   - Обновляет `~jump/.ssh/authorized_keys`
+**Применяется к:** edge VM
 
-### Пример использования
+### Role: xray
 
-```hcl
-module "config_sync" {
-  source = "../../modules/config-sync"
+Устанавливает и настраивает Xray как systemd-сервис для прозрачного проксирования (TPROXY):
+- Скачивает Xray-core binary
+- Развертывает конфигурацию из Jinja2-шаблона в `/etc/xray/config.json`
+- Создает systemd unit
+- Включает и запускает сервис
 
-  edge_public_ip          = module.edge.edge_public_ip
-  jump_private_key_path   = var.jump_private_key_path
-  teams                   = var.teams
-  xray_config_path        = local.xray_config_path
-  traefik_config          = local.traefik_config
-  
-  depends_on = [
-    module.edge,
-    module.team_vm
-  ]
-}
-```
-
-**Преимущества:**
-- Четкое разделение: создание инфраструктуры vs обновление конфигов
-- Можно обновлять конфиги без изменения VM
-- Легче отлаживать проблемы синхронизации
-- Автоматический перезапуск сервисов после изменений
+**Применяется к:** edge VM
 
 ---
 
 ## Диаграмма зависимостей
 
+### Terraform
+
 ```
-network ──┬──> security ──┬──> edge ──> routing
-          │               │              │
-          │               └──────────────┼──> team_vm
-          │                              │
-          └──────────────────────────────┘
-                                         │
-                                         ├──> team-credentials
-                                         │
-                                         └──> config-sync
+data sources (AZ, flavor, disk_type)
+  -> network -> security -> edge  -> team_vm
+                                  -> team-credentials
+                                  -> ansible inventory
 ```
 
-**Важно:** Модули `team-credentials` и `config-sync` не создают cloud ресурсы, они управляют только локальными файлами и синхронизацией.
+### Ansible
 
-## Порядок создания ресурсов
+```
+playbooks/site.yml
+  -> playbooks/edge.yml
+  |    -> roles: common, docker, nat, traefik, xray
+  |
+  -> playbooks/team-vms.yml
+       -> roles: common, docker
+```
 
-1. **network** - создаёт VPC и публичную подсеть
-2. **security** - создаёт security groups
-3. **edge** - создаёт edge VM (зависит от network и security)
-4. **routing** - создаёт route table (зависит от network и edge)
-5. **private subnet** - создаётся отдельно с route table (зависит от routing)
-6. **team_vm** - создаёт VM команд (зависит от private subnet и security)
+## Порядок развертывания
+
+1. **terraform apply** -- создаёт VM, сети, security groups, SSH-ключи, Ansible inventory
+2. **ansible-playbook playbooks/edge.yml** -- настраивает edge VM (Docker, NAT, Traefik, Xray)
+3. **ansible-playbook playbooks/team-vms.yml** -- настраивает team VMs (базовые пакеты, Docker)
 
 ## Генерация ключей (в environments/dev/main.tf)
 
 Для каждой команды автоматически генерируются:
 
-- `tls_private_key.team_jump_key` - ключ для bastion
-- `tls_private_key.team_vm_key` - ключ для VM команды
-- `tls_private_key.team_github_key` - ключ для GitHub CI/CD
+- `tls_private_key.team_jump_key` -- ключ для bastion
+- `tls_private_key.team_vm_key` -- ключ для VM команды
+- `tls_private_key.team_github_key` -- ключ для GitHub CI/CD
 
-Все ключи сохраняются в `secrets/team-XX/` вместе с готовым SSH config.
+Все ключи сохраняются в `secrets/team-<key>/` вместе с готовым SSH config.
+
+## Ansible Inventory
+
+Inventory автоматически генерируется Terraform из шаблона `ansible/templates/inventory.yml.tpl` и сохраняется в `ansible/inventory/hosts.yml`.

@@ -11,7 +11,7 @@ resource "cloudru_evolution_fip" "edge" {
 }
 
 # =============================================================================
-# Edge VM Instance (dual-homed: public + private subnets)
+# Edge VM Instance (single interface with FIP)
 # =============================================================================
 
 resource "cloudru_evolution_compute" "edge" {
@@ -27,6 +27,7 @@ resource "cloudru_evolution_compute" "edge" {
     host_name  = "south-edge"
     user_name  = var.user_name
     public_key = var.public_key
+    password   = var.password
   }
 
   boot_disk {
@@ -38,31 +39,10 @@ resource "cloudru_evolution_compute" "edge" {
     }
   }
 
-  # Public subnet interface (with FIP)
   network_interfaces {
-    subnet {
-      name = var.public_subnet_name
-    }
-
-    security_groups {
-      id = var.security_group_id
-    }
-
-    fip {
-      id = cloudru_evolution_fip.edge.id
-    }
-  }
-
-  # Private subnet interface (gateway for team VMs)
-  network_interfaces {
-    subnet {
-      name = var.private_subnet_name
-    }
-
-    security_groups {
-      id = var.security_group_id
-    }
-
-    ip_address = var.private_ip
+    subnet { name = var.subnet_name }
+    ip_address                 = var.ip_address
+    interface_security_enabled = false
+    fip { id = cloudru_evolution_fip.edge.id }
   }
 }

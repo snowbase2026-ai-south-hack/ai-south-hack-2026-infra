@@ -23,6 +23,7 @@ resource "cloudru_evolution_compute" "team" {
     host_name  = "south-${each.key}"
     user_name  = each.value.user
     public_key = var.team_public_keys[each.key]
+    password   = var.password
   }
 
   boot_disk {
@@ -35,7 +36,7 @@ resource "cloudru_evolution_compute" "team" {
 
   network_interfaces {
     subnet {
-      name = var.private_subnet_name
+      name = var.subnet_name
     }
     security_groups {
       id = var.security_group_id

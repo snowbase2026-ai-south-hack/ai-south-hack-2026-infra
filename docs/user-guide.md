@@ -1,6 +1,6 @@
 # Руководство для команд AI Talent Camp
 
-> **Последнее обновление:** 2026-01-29  
+> **Последнее обновление:** 2026-03-17
 > **Для команд участников**  
 > **Связанные документы:** [quickstart.md](quickstart.md), [troubleshooting.md](troubleshooting.md)
 
@@ -13,7 +13,7 @@
 - 4 vCPU, 8GB RAM, 65GB SSD
 - Полный sudo доступ
 - Доступ в интернет (включая AI API)
-- Доменное имя `teamXX.camp.aitalenthub.ru`
+- Доменное имя `<team-name>.south.aitalenthub.ru`
 - SSH доступ через центральную точку входа
 
 **Что вам нужно сделать:**
@@ -42,13 +42,13 @@
 
 ### Через терминал (SSH)
 
-Вы получите папку `team-XX` с SSH ключами.
+Вы получите папку с SSH ключами (например, `team-team01`).
 
 **Шаг 1: Копирование ключей**
 
 ```bash
 # Скопировать папку с ключами
-cp -r team-01 ~/.ssh/ai-camp
+cp -r team-team01 ~/.ssh/ai-camp
 
 # Установить правильные права доступа
 chmod 700 ~/.ssh/ai-camp
@@ -180,7 +180,7 @@ sudo nano /etc/nginx/sites-available/myapp
 ```nginx
 server {
     listen 80;
-    server_name team01.camp.aitalenthub.ru; # тут надо поменять на ваш домен
+    server_name team01.south.aitalenthub.ru; # тут надо поменять на ваш домен
 
     location / {
         proxy_pass http://localhost:3000;
@@ -221,7 +221,7 @@ Let's Encrypt предоставляет бесплатные SSL сертифи
 sudo apt install -y certbot python3-certbot-nginx
 
 # Получить сертификат. Не забудьте поменять домен на ваш
-sudo certbot --nginx -d team01.camp.aitalenthub.ru
+sudo certbot --nginx -d team01.south.aitalenthub.ru
 
 # Следуйте инструкциям:
 # 1. Введите email
@@ -250,45 +250,15 @@ sudo certbot renew --dry-run
 
 ### Ваш стандартный домен
 
-Вы получаете: **`teamXX.camp.aitalenthub.ru`**
+Вы получаете: **`<team-name>.south.aitalenthub.ru`**
 
-Где `XX` - номер команды (01, 02, и т.д.)
+Где `<team-name>` -- идентификатор вашей команды (например, `team01`, `dashboard`)
 
-### Переименование домена
+### Имя команды в домене
 
-Вы можете изменить часть `teamXX` на своё название:
+Имя команды в домене определяется идентификатором в `terraform.tfvars` (ключ в maps `teams`). Например, если ваша команда зарегистрирована как `team01`, ваш домен будет `team01.south.aitalenthub.ru`. Если как `dashboard` -- `dashboard.south.aitalenthub.ru`.
 
-**Шаги:**
-
-1. Создайте [issue в репозитории](https://github.com/AI-Talent-Camp-2026/ai-talent-camp-2026-infra/issues/new)
-2. Заголовок: `Запрос на изменение домена для teamXX`
-3. Укажите:
-   ```
-   Текущий домен: team01.camp.aitalenthub.ru
-   Желаемое имя: myteam (только латиница, цифры, дефис)
-   Новый домен: myteam.camp.aitalenthub.ru
-   ```
-4. Администратор обновит конфигурацию (обычно 1 рабочий день)
-5. После одобрения обновите настройки на вашей VM
-
-**Требования к имени:**
-- Длина: 3-20 символов
-- Разрешены: латиница (a-z), цифры (0-9), дефис (-)
-- Примеры: `myteam`, `cool-project`, `hack2026`
-
-**После смены домена на вашей VM:**
-
-```bash
-# 1. Обновить конфигурацию Nginx
-sudo nano /etc/nginx/sites-available/myapp
-# Изменить server_name на новый домен
-
-# 2. Получить новый SSL сертификат
-sudo certbot --nginx -d myteam.camp.aitalenthub.ru
-
-# 3. Перезагрузить Nginx
-sudo systemctl reload nginx
-```
+Для изменения имени обратитесь к администратору.
 
 ### Использование собственного домена
 
@@ -316,13 +286,13 @@ sudo systemctl reload nginx
 ```
 Тип: CNAME
 Имя: app (или любое другое: www, api, и т.д.)
-Значение: team01.camp.aitalenthub.ru
+Значение: team01.south.aitalenthub.ru
 TTL: Auto или 300
 ```
 
 **Пример:**
 ```
-app.mydomain.com → team01.camp.aitalenthub.ru (CNAME)
+app.mydomain.com → team01.south.aitalenthub.ru (CNAME)
 ```
 
 **Шаг 3: Проверка DNS (может занять до 48 часов)**
@@ -332,8 +302,8 @@ app.mydomain.com → team01.camp.aitalenthub.ru (CNAME)
 dig app.mydomain.com
 
 # Должно быть (для CNAME):
-# app.mydomain.com. 300 IN CNAME team01.camp.aitalenthub.ru.
-# team01.camp.aitalenthub.ru. 300 IN A <IP edge VM>
+# app.mydomain.com. 300 IN CNAME team01.south.aitalenthub.ru.
+# team01.south.aitalenthub.ru. 300 IN A <IP edge VM>
 
 # Для A-записи:
 # app.mydomain.com. 300 IN A <IP edge VM>
@@ -352,7 +322,7 @@ sudo nano /etc/nginx/sites-available/myapp
 ```nginx
 server {
     listen 80;
-    server_name team01.camp.aitalenthub.ru app.mydomain.com;
+    server_name team01.south.aitalenthub.ru app.mydomain.com;
     # ... остальная конфигурация
 }
 ```
@@ -364,12 +334,12 @@ server {
 sudo certbot --nginx -d app.mydomain.com
 
 # Или для обоих доменов сразу
-sudo certbot --nginx -d team01.camp.aitalenthub.ru -d app.mydomain.com
+sudo certbot --nginx -d team01.south.aitalenthub.ru -d app.mydomain.com
 ```
 
 **Важно:** 
 - ⚠️ Без добавления домена в конфигурацию Traefik (Шаг 1), ваш кастомный домен не будет работать
-- ✅ Стандартный домен `teamXX.camp.aitalenthub.ru` работает сразу без дополнительных настроек
+- ✅ Стандартный домен `<team-name>.south.aitalenthub.ru` работает сразу без дополнительных настроек
 
 ---
 
@@ -468,7 +438,7 @@ cat ~/.ssh/ai-camp/team01-deploy-key
 
 В workflow подключаемся к VM так же, как вручную: через jump-сервер (bastion). Используется `ProxyCommand`: сначала SSH на bastion с jump-ключом, затем на VM с ключом VM для CI/CD.
 
-Значения `BASTION_HOST`, `TEAM_VM_IP`, `TEAM_USER` берите из выданного файла `ssh-config` (в папке `team-XX/`): там указаны `HostName` для bastion и для вашей VM (приватный IP), а также имя пользователя.
+Значения `BASTION_HOST`, `TEAM_VM_IP`, `TEAM_USER` берите из выданного файла `ssh-config` (в папке `team-<key>/`): там указаны `HostName` для bastion и для вашей VM (приватный IP), а также имя пользователя.
 
 `.github/workflows/deploy.yml`:
 
@@ -480,8 +450,8 @@ on:
     branches: [ main ]
 
 env:
-  BASTION_HOST: bastion.camp.aitalenthub.ru
-  TEAM_VM_IP: 10.20.0.5
+  BASTION_HOST: bastion.south.aitalenthub.ru
+  TEAM_VM_IP: 10.0.2.11
   TEAM_USER: team01
 
 jobs:
@@ -516,7 +486,7 @@ jobs:
         REMOTE
 ```
 
-**Важно:** Значения `BASTION_HOST`, `TEAM_VM_IP`, `TEAM_USER` возьмите из выданного вам файла `ssh-config` в папке `team-XX/`.
+**Важно:** Значения `BASTION_HOST`, `TEAM_VM_IP`, `TEAM_USER` возьмите из выданного вам файла `ssh-config` в папке `team-<key>/`.
 
 ---
 
@@ -701,7 +671,7 @@ ssh -vvv -F ~/.ssh/ai-camp/ssh-config team01
 **Проверить доступность центральной точки входа:**
 
 ```bash
-ping bastion.camp.aitalenthub.ru
+ping bastion.south.aitalenthub.ru
 ```
 
 ### Приложение не доступно извне
@@ -743,7 +713,7 @@ sudo ufw allow 443/tcp
 
 ```bash
 # Проверить что домен указывает на правильный IP
-dig team01.camp.aitalenthub.ru
+dig team01.south.aitalenthub.ru
 ```
 
 ### Ошибка "Permission denied" в Docker

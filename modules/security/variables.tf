@@ -3,13 +3,13 @@ variable "name" {
   type        = string
 }
 
-variable "public_cidr" {
-  description = "CIDR block of the public subnet (edge VM network)"
+variable "subnet_cidr" {
+  description = "CIDR block of the subnet"
   type        = string
 }
 
-variable "private_cidr" {
-  description = "CIDR block of the private subnet (team VMs network)"
+variable "edge_private_ip" {
+  description = "Private IP address of the edge VM"
   type        = string
 }
 

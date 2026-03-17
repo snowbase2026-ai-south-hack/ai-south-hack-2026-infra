@@ -1,6 +1,6 @@
 # Troubleshooting - Решение проблем
 
-> **Последнее обновление:** 2026-01-29  
+> **Последнее обновление:** 2026-03-17
 > **Связанные документы:** [user-guide.md](user-guide.md), [xray-configuration.md](xray-configuration.md)
 
 ## Обзор
@@ -32,19 +32,19 @@
 
 **Симптомы:**
 ```
-ssh: connect to host bastion.camp.aitalenthub.ru port 22: Connection refused
+ssh: connect to host bastion.south.aitalenthub.ru port 22: Connection refused
 ```
 
 **Диагностика:**
 ```bash
 # 1. Проверить доступность хоста
-ping bastion.camp.aitalenthub.ru
+ping bastion.south.aitalenthub.ru
 
 # 2. Проверить порт 22
-nc -zv bastion.camp.aitalenthub.ru 22
+nc -zv bastion.south.aitalenthub.ru 22
 
 # 3. Проверить DNS
-nslookup bastion.camp.aitalenthub.ru
+nslookup bastion.south.aitalenthub.ru
 ```
 
 **Решение:**
@@ -52,7 +52,7 @@ nslookup bastion.camp.aitalenthub.ru
 2. Если порт 22 закрыт - проверить security group на edge VM
 3. Если все работает, но SSH отказывает - проверить SSH service на edge VM:
    ```bash
-   # На edge VM (через консоль Yandex Cloud)
+   # На edge VM (через консоль Cloud.ru)
    sudo systemctl status sshd
    sudo journalctl -u sshd -n 50
    ```
@@ -111,7 +111,7 @@ ssh -vvv -F ~/.ssh/ai-camp/ssh-config team01
 
 **Симптомы:**
 ```
-ssh: Could not resolve hostname 10.20.0.8: Name or service not known
+ssh: Could not resolve hostname 10.0.2.8: Name or service not known
 ```
 
 **Диагностика:**
@@ -120,10 +120,10 @@ ssh: Could not resolve hostname 10.20.0.8: Name or service not known
 cat ~/.ssh/ai-camp/ssh-config
 
 # 2. Проверить подключение к bastion отдельно
-ssh -F ~/.ssh/ai-camp/ssh-config -J jump@bastion.camp.aitalenthub.ru echo "OK"
+ssh -F ~/.ssh/ai-camp/ssh-config -J jump@bastion.south.aitalenthub.ru echo "OK"
 
 # 3. Проверить AllowTcpForwarding
-ssh jump@bastion.camp.aitalenthub.ru "grep AllowTcpForwarding /etc/ssh/sshd_config.d/*"
+ssh jump@bastion.south.aitalenthub.ru "grep AllowTcpForwarding /etc/ssh/sshd_config.d/*"
 ```
 
 **Решение:**
@@ -136,7 +136,7 @@ ssh jump@bastion.camp.aitalenthub.ru "grep AllowTcpForwarding /etc/ssh/sshd_conf
    ```
 
 2. **Неправильный SSH config:**
-   - Использовать готовый ssh-config из `secrets/team-XX/`
+   - Использовать готовый ssh-config из `secrets/team-<key>/`
 
 **Профилактика:**
 - Не изменять SSH конфигурацию на bastion вручную
@@ -163,7 +163,7 @@ ip route | grep default
 cat /etc/resolv.conf
 
 # 3. Проверить доступность edge VM
-ping 192.168.1.x  # IP edge VM
+ping 10.0.1.x  # IP edge VM
 
 # На edge VM
 # 4. Проверить NAT правила
@@ -183,7 +183,7 @@ sysctl net.ipv4.ip_forward
 2. **NAT не настроен:**
    ```bash
    # На edge VM
-   sudo iptables -t nat -A POSTROUTING -s 10.20.0.0/24 -o eth0 -j MASQUERADE
+   sudo iptables -t nat -A POSTROUTING -s 10.0.2.0/24 -o eth0 -j MASQUERADE
    sudo netfilter-persistent save
    ```
 
@@ -215,10 +215,10 @@ curl -o /dev/null http://speedtest.tele2.net/100MB.zip
 ping -c 10 8.8.8.8
 
 # 3. Проверить загрузку CPU на edge VM
-ssh jump@bastion.camp.aitalenthub.ru "htop"
+ssh jump@bastion.south.aitalenthub.ru "htop"
 
 # 4. Проверить network utilization
-ssh jump@bastion.camp.aitalenthub.ru "ifstat -i eth0 1 5"
+ssh jump@bastion.south.aitalenthub.ru "ifstat -i eth0 1 5"
 ```
 
 **Решение:**
@@ -276,18 +276,16 @@ sudo tail -f /var/log/xray/access.log
 
 2. **Ошибка в конфигурации:**
    ```bash
-   /usr/local/bin/xray run -test -config /opt/xray/config.json
+   /usr/local/share/xray/xray run -test -config /etc/xray/config.json
    # Исправить ошибки
    sudo systemctl restart xray
    ```
 
 3. **iptables правила отсутствуют:**
    ```bash
-   # Проверить cloud-init был выполнен
-   sudo cloud-init status
-   
-   # Или пересоздать правила вручную
-   # См. modules/edge/cloud-init.tpl
+   # Перезапустить настройку через Ansible
+   cd ansible
+   ansible-playbook playbooks/edge.yml --tags nat,xray
    ```
 
 4. **Policy routing не работает:**
@@ -298,8 +296,8 @@ sudo tail -f /var/log/xray/access.log
 
 **Профилактика:**
 - Не изменять iptables вручную
-- Все изменения Xray конфига делать через Terraform
-- Тестировать конфиг перед применением: `xray run -test`
+- Все изменения Xray конфига делать через Ansible
+- Тестировать конфиг перед применением: `/usr/local/share/xray/xray run -test -config /etc/xray/config.json`
 
 ---
 
@@ -325,7 +323,7 @@ nc -zv <proxy-server-ip> <proxy-port>
 sudo iptables -t mangle -L XRAY -n -v | grep <proxy-server-ip>
 
 # 4. Проверить routing правила
-jq '.routing.rules' /opt/xray/config.json
+jq '.routing.rules' /etc/xray/config.json
 ```
 
 **Решение:**
@@ -372,10 +370,10 @@ jq '.routing.rules' /opt/xray/config.json
 sudo grep "api.openai.com" /var/log/xray/access.log
 
 # 2. Проверить routing правила
-jq '.routing.rules[] | select(.outboundTag == "proxy")' /opt/xray/config.json
+jq '.routing.rules[] | select(.outboundTag == "proxy")' /etc/xray/config.json
 
 # 3. Проверить geosite файл
-ls -lh /usr/local/bin/geosite.dat
+ls -lh /usr/local/share/xray/geosite.dat
 ```
 
 **Решение:**
@@ -401,7 +399,7 @@ ls -lh /usr/local/bin/geosite.dat
 
 3. **geosite.dat устарел:**
    ```bash
-   wget -O /usr/local/bin/geosite.dat \
+   wget -O /usr/local/share/xray/geosite.dat \
      https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geosite.dat
    sudo systemctl restart xray
    ```
@@ -418,12 +416,12 @@ ls -lh /usr/local/bin/geosite.dat
 ### Проблема: Сайт недоступен извне
 
 **Симптомы:**
-- `curl team01.camp.aitalenthub.ru` - connection timeout или refused
+- `curl team01.south.aitalenthub.ru` - connection timeout или refused
 
 **Диагностика:**
 ```bash
 # 1. Проверить DNS
-dig team01.camp.aitalenthub.ru
+dig team01.south.aitalenthub.ru
 
 # 2. Проверить приложение запущено на team VM
 ssh -F ~/.ssh/ai-camp/ssh-config team01 "sudo ss -tlnp | grep ':80\|:443'"
@@ -434,14 +432,14 @@ docker ps | grep traefik
 docker logs traefik | tail -50
 
 # 4. Проверить динамическую конфигурацию
-cat /opt/traefik/dynamic/teams.yml | grep team01
+cat /etc/traefik/dynamic/teams.yml | grep team01
 ```
 
 **Решение:**
 1. **DNS не настроен:**
    ```bash
    # Добавить A запись
-   team01.camp.aitalenthub.ru  A  <edge-public-ip>
+   team01.south.aitalenthub.ru  A  <edge-public-ip>
    ```
 
 2. **Приложение не запущено:**
@@ -451,19 +449,19 @@ cat /opt/traefik/dynamic/teams.yml | grep team01
 
 3. **Traefik не знает о route:**
    ```bash
-   # Проверить /opt/traefik/dynamic/teams.yml
+   # Проверить /etc/traefik/dynamic/teams.yml
    # Должно быть:
    tcp:
      routers:
        team01:
          entryPoints: ["websecure"]
-         rule: "HostSNI(`team01.camp.aitalenthub.ru`)"
+         rule: "HostSNI(`team01.south.aitalenthub.ru`)"
          service: "team01"
      services:
        team01:
          loadBalancer:
            servers:
-             - address: "10.20.0.8:443"
+             - address: "10.0.2.8:443"
    
    # Если нет - применить terraform apply
    ```
@@ -487,11 +485,11 @@ curl: (60) SSL certificate problem: unable to get local issuer certificate
 **Диагностика:**
 ```bash
 # 1. Проверить сертификат
-openssl s_client -connect team01.camp.aitalenthub.ru:443 -servername team01.camp.aitalenthub.ru
+openssl s_client -connect team01.south.aitalenthub.ru:443 -servername team01.south.aitalenthub.ru
 
 # На team VM
 # 2. Проверить наличие сертификата
-sudo ls -la /etc/letsencrypt/live/team01.camp.aitalenthub.ru/
+sudo ls -la /etc/letsencrypt/live/team01.south.aitalenthub.ru/
 ```
 
 **Решение:**
@@ -499,7 +497,7 @@ sudo ls -la /etc/letsencrypt/live/team01.camp.aitalenthub.ru/
    ```bash
    # На team VM
    sudo apt install certbot python3-certbot-nginx
-   sudo certbot --nginx -d team01.camp.aitalenthub.ru
+   sudo certbot --nginx -d team01.south.aitalenthub.ru
    ```
 
 2. **Сертификат истёк:**
@@ -523,22 +521,22 @@ sudo ls -la /etc/letsencrypt/live/team01.camp.aitalenthub.ru/
 
 **Симптомы:**
 ```bash
-nslookup team01.camp.aitalenthub.ru
+nslookup team01.south.aitalenthub.ru
 # Server:		127.0.0.53
-# ** server can't find team01.camp.aitalenthub.ru: NXDOMAIN
+# ** server can't find team01.south.aitalenthub.ru: NXDOMAIN
 ```
 
 **Диагностика:**
 ```bash
 # 1. Проверить DNS записи
-dig team01.camp.aitalenthub.ru
-dig team01.camp.aitalenthub.ru @8.8.8.8
+dig team01.south.aitalenthub.ru
+dig team01.south.aitalenthub.ru @8.8.8.8
 
 # 2. Проверить propagation
 # https://dnschecker.org/
 
 # 3. Проверить wildcard
-dig any-subdomain.camp.aitalenthub.ru
+dig any-subdomain.south.aitalenthub.ru
 ```
 
 **Решение:**
@@ -552,7 +550,7 @@ dig any-subdomain.camp.aitalenthub.ru
 3. **Wildcard не настроен:**
    ```
    # Добавить wildcard запись
-   *.camp.aitalenthub.ru  A  <edge-public-ip>
+   *.south.aitalenthub.ru  A  <edge-public-ip>
    ```
 
 **Профилактика:**

@@ -25,18 +25,8 @@ variable "availability_zone_name" {
   default     = "ru.AZ-1"
 }
 
-variable "public_subnet_name" {
-  description = "Name of the public subnet for the external interface"
-  type        = string
-}
-
-variable "private_subnet_name" {
-  description = "Name of the private subnet for the internal/gateway interface"
-  type        = string
-}
-
-variable "security_group_id" {
-  description = "Security group ID applied to both interfaces"
+variable "subnet_name" {
+  description = "Name of the subnet for the network interface"
   type        = string
 }
 
@@ -51,8 +41,15 @@ variable "public_key" {
   type        = string
 }
 
-variable "private_ip" {
-  description = "Static IP on the private interface (default gateway for team VMs)"
+variable "password" {
+  description = "Password for serial console access"
   type        = string
-  default     = "10.0.2.1"
+  sensitive   = true
+  default     = ""
+}
+
+variable "ip_address" {
+  description = "Static IP address for the edge VM"
+  type        = string
+  default     = "10.0.1.10"
 }

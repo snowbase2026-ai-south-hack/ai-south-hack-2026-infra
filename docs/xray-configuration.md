@@ -1,6 +1,6 @@
 # Конфигурация Xray
 
-> **Последнее обновление:** 2026-01-29  
+> **Последнее обновление:** 2026-03-17
 > **Связанные документы:** [user-guide.md](user-guide.md), [troubleshooting.md](troubleshooting.md)
 
 ## Обзор
@@ -33,12 +33,12 @@ Xray развернут как нативный systemd сервис, а не Do
 
 | Компонент | Путь |
 |-----------|------|
-| Бинарный файл | `/usr/local/bin/xray` |
-| Конфигурация | `/opt/xray/config.json` |
+| Бинарный файл | `/usr/local/share/xray/xray` |
+| Конфигурация | `/etc/xray/config.json` |
 | Systemd service | `/etc/systemd/system/xray.service` |
 | Access лог | `/var/log/xray/access.log` |
 | Error лог | `/var/log/xray/error.log` |
-| Geo данные | `/usr/local/bin/geoip.dat`, `/usr/local/bin/geosite.dat` |
+| Geo данные | `/usr/local/share/xray/geoip.dat`, `/usr/local/share/xray/geosite.dat` |
 
 ### Управление сервисом
 
@@ -66,7 +66,7 @@ sudo journalctl -u xray -n 100
 
 ## Структура конфигурационного файла
 
-Конфигурационный файл Xray (`/opt/xray/config.json`) состоит из нескольких основных секций.
+Конфигурационный файл Xray (`/etc/xray/config.json`) состоит из нескольких основных секций.
 
 ### 1. log - Настройка логирования
 
@@ -242,29 +242,27 @@ sudo journalctl -u xray -n 100
 
 ## Создание корректного конфига
 
-### Вариант 1: Использование Terraform (рекомендуется)
+### Вариант 1: Использование Ansible (рекомендуется)
 
-Terraform автоматизирует управление конфигурацией Xray.
+Ansible автоматизирует управление конфигурацией Xray через роль `xray`.
 
 **Процесс:**
 
-1. После первого `terraform apply` создается файл `secrets/xray-config.json`
-2. Отредактируйте его согласно вашим требованиям
-3. Примените изменения:
+1. Отредактируйте переменные в `ansible/group_vars/edge.yml` или шаблон `ansible/roles/xray/templates/config.json.j2`
+2. Примените изменения:
    ```bash
-   cd environments/dev
-   terraform apply
+   cd ansible
+   ansible-playbook playbooks/edge.yml --tags xray
    ```
 
-Terraform автоматически:
-- ✅ Загрузит обновленный конфиг на edge VM
-- ✅ Перезапустит Xray сервис
-- ✅ Синхронизирует изменения
+Ansible автоматически:
+- Развернет обновленный конфиг в `/etc/xray/config.json`
+- Перезапустит Xray сервис
 
 **Преимущества:**
-- Version control для конфигурации
+- Version control для конфигурации (шаблоны в git)
 - Автоматическая синхронизация
-- Откат изменений через git
+- Идемпотентность -- можно запускать повторно
 
 ### Вариант 2: Ручное редактирование на сервере
 
@@ -272,13 +270,13 @@ Terraform автоматически:
 
 ```bash
 # 1. Подключиться к edge VM
-ssh jump@bastion.camp.aitalenthub.ru
+ssh jump@bastion.south.aitalenthub.ru
 
 # 2. Отредактировать конфиг
-sudo nano /opt/xray/config.json
+sudo nano /etc/xray/config.json
 
 # 3. Проверить валидность конфига
-/usr/local/bin/xray run -test -config /opt/xray/config.json
+/usr/local/share/xray/xray run -test -config /etc/xray/config.json
 
 # 4. Если валидация прошла, применить изменения
 sudo systemctl restart xray
@@ -290,7 +288,7 @@ sudo systemctl status xray
 sudo journalctl -u xray -n 50
 ```
 
-⚠️ **Важно:** Изменения, сделанные напрямую на сервере, будут перезаписаны при следующем `terraform apply`.
+**Важно:** Изменения, сделанные напрямую на сервере, будут перезаписаны при следующем запуске Ansible.
 
 ### Требования к конфигурационному файлу
 
@@ -299,7 +297,7 @@ sudo journalctl -u xray -n 50
 1. **Валидный JSON**
    ```bash
    # Проверка с помощью jq
-   jq . /opt/xray/config.json
+   jq . /etc/xray/config.json
    ```
 
 2. **Обязательные секции**
@@ -546,7 +544,7 @@ sudo iptables -t mangle -L XRAY -n -v
 sudo iptables -t mangle -L PREROUTING -n -v | grep XRAY
 
 # Должно быть примерно:
-#  1234 567890 XRAY       all  --  *      *       10.20.0.0/24         0.0.0.0/0
+#  1234 567890 XRAY       all  --  *      *       10.0.2.0/24         0.0.0.0/0
 ```
 
 ---
@@ -598,7 +596,7 @@ sudo tail -f /var/log/xray/error.log
 ### 3. Валидация конфигурации
 
 ```bash
-/usr/local/bin/xray run -test -config /opt/xray/config.json
+/usr/local/share/xray/xray run -test -config /etc/xray/config.json
 ```
 
 **Успешный результат:**
@@ -651,8 +649,8 @@ curl -s http://ifconfig.co
 sudo tail -f /var/log/xray/access.log
 
 # Пример правильной работы:
-# 2026/01/29 10:33:58.499662 from 10.20.0.8:39444 accepted tcp:api.openai.com:443 [tproxy-in -> proxy]
-# 2026/01/29 10:34:01.123456 from 10.20.0.8:40123 accepted tcp:ya.ru:80 [tproxy-in -> direct]
+# 2026/01/29 10:33:58.499662 from 10.0.2.8:39444 accepted tcp:api.openai.com:443 [tproxy-in -> proxy]
+# 2026/01/29 10:34:01.123456 from 10.0.2.8:40123 accepted tcp:ya.ru:80 [tproxy-in -> direct]
 ```
 
 ### Типичные проблемы
@@ -665,7 +663,7 @@ sudo tail -f /var/log/xray/access.log
 **Диагностика:**
 ```bash
 # Проверить валидность JSON
-jq . /opt/xray/config.json
+jq . /etc/xray/config.json
 
 # Проверить логи
 journalctl -u xray -n 100
@@ -733,7 +731,7 @@ sudo iptables -t mangle -L XRAY -n -v | grep <proxy-server-ip>
 sudo grep "domain.com" /var/log/xray/access.log
 
 # Проверить порядок правил
-jq '.routing.rules' /opt/xray/config.json
+jq '.routing.rules' /etc/xray/config.json
 ```
 
 **Решение:**

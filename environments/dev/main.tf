@@ -110,14 +110,13 @@ resource "tls_private_key" "team_github_key" {
 }
 
 # =============================================================================
-# Module: Network (public + private subnets)
+# Module: Network (single subnet)
 # =============================================================================
 
 module "network" {
   source = "../../modules/network"
 
-  public_cidr          = var.public_cidr
-  private_cidr         = var.private_cidr
+  subnet_cidr          = var.subnet_cidr
   availability_zone_id = local.az.id
   project_name         = var.project_name
 }
@@ -130,8 +129,8 @@ module "security" {
   source = "../../modules/security"
 
   name                 = var.project_name
-  public_cidr          = var.public_cidr
-  private_cidr         = var.private_cidr
+  subnet_cidr          = var.subnet_cidr
+  edge_private_ip      = cidrhost(var.subnet_cidr, 10)
   availability_zone_id = local.az.id
 }
 
@@ -147,14 +146,13 @@ module "edge" {
   disk_size              = var.edge_disk_size
   availability_zone_id   = local.az.id
   availability_zone_name = var.availability_zone_name
-  public_subnet_name     = module.network.public_subnet_name
-  private_subnet_name    = module.network.private_subnet_name
-  security_group_id      = module.security.edge_sg_id
+  subnet_name            = module.network.subnet_name
+  ip_address             = cidrhost(var.subnet_cidr, 10)
   user_name              = var.jump_user
   public_key             = var.jump_public_key
-  private_ip             = cidrhost(var.private_cidr, 1)
+  password               = var.vm_password
 
-  depends_on = [module.network, module.security]
+  depends_on = [module.network]
 }
 
 # =============================================================================
@@ -169,10 +167,9 @@ module "team_vm" {
   disk_type_id           = local.ssd_disk_type.id
   disk_size              = var.team_disk_size
   availability_zone_name = var.availability_zone_name
-  private_subnet_name    = module.network.private_subnet_name
+  subnet_name            = module.network.subnet_name
   security_group_id      = module.security.team_sg_id
-
-  # Use generated VM key as primary SSH key for each team
+  password               = var.vm_password
   team_public_keys = {
     for team_id, key in tls_private_key.team_vm_key : team_id => key.public_key_openssh
   }

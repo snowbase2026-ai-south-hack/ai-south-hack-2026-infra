@@ -2,6 +2,22 @@
 - name: Configure team VMs
   hosts: team_vms
   become: true
+  pre_tasks:
+    - name: Deploy netplan route override
+      template:
+        src: ../../roles/common/templates/90-route-override.yaml.j2
+        dest: /etc/netplan/90-override.yaml
+        mode: "0600"
+      notify: apply netplan
+
+    - name: Replace default route immediately
+      shell: ip route replace default via {{ edge_private_ip }}
+      changed_when: true
+
+  handlers:
+    - name: apply netplan
+      command: netplan apply
+
   roles:
     - common
     - docker

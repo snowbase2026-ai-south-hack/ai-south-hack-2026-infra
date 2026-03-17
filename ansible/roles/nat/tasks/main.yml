@@ -13,30 +13,40 @@
   environment:
     DEBIAN_FRONTEND: noninteractive
 
-- name: Set up NAT MASQUERADE
-  iptables:
-    table: nat
-    chain: POSTROUTING
-    source: "{{ private_cidr }}"
-    jump: MASQUERADE
-  notify: save iptables
+- name: Deploy iptables rules
+  template:
+    src: iptables.rules.j2
+    dest: /etc/iptables/rules.v4
+    mode: "0644"
+  notify: restore iptables
 
-- name: Set up hairpin NAT PREROUTING
-  iptables:
-    table: nat
-    chain: PREROUTING
-    source: "{{ private_cidr }}"
-    destination: "{{ edge_public_ip }}"
-    jump: DNAT
-    to_destination: "{{ edge_private_ip }}"
-  notify: save iptables
-  when: edge_public_ip is defined
+- name: Add TPROXY ip rule
+  command: ip rule add fwmark 1 table 100
+  register: ip_rule_result
+  changed_when: ip_rule_result.rc == 0
+  failed_when: ip_rule_result.rc != 0 and 'File exists' not in ip_rule_result.stderr
+  when: xray_tproxy_enabled | default(false)
 
-- name: Set up hairpin NAT POSTROUTING
-  iptables:
-    table: nat
-    chain: POSTROUTING
-    source: "{{ private_cidr }}"
-    destination: "{{ edge_private_ip }}"
-    jump: MASQUERADE
-  notify: save iptables
+- name: Add TPROXY local route
+  command: ip route add local 0.0.0.0/0 dev lo table 100
+  register: ip_route_result
+  changed_when: ip_route_result.rc == 0
+  failed_when: ip_route_result.rc != 0 and 'File exists' not in ip_route_result.stderr
+  when: xray_tproxy_enabled | default(false)
+
+- name: Persist TPROXY routing in rc.local
+  copy:
+    content: |
+      #!/bin/bash
+      ip rule add fwmark 1 table 100 2>/dev/null
+      ip route add local 0.0.0.0/0 dev lo table 100 2>/dev/null
+      exit 0
+    dest: /etc/rc.local
+    mode: "0755"
+  when: xray_tproxy_enabled | default(false)
+
+- name: Enable rc-local service
+  systemd:
+    name: rc-local
+    enabled: true
+  when: xray_tproxy_enabled | default(false)

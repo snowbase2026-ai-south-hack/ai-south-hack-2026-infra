@@ -1,5 +1,4 @@
 ---
 domain: south.aitalenthub.ru
-public_cidr: "10.0.1.0/24"
-private_cidr: "10.0.2.0/24"
-edge_private_ip: "10.0.2.1"
+subnet_cidr: "10.0.1.0/24"
+edge_private_ip: "10.0.1.10"

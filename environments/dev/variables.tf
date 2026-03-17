@@ -29,16 +29,10 @@ variable "availability_zone_name" {
 # Network Configuration
 # =============================================================================
 
-variable "public_cidr" {
-  description = "CIDR block for public subnet (edge/NAT)"
+variable "subnet_cidr" {
+  description = "CIDR block for the subnet"
   type        = string
   default     = "10.0.1.0/24"
-}
-
-variable "private_cidr" {
-  description = "CIDR block for private subnet (team VMs)"
-  type        = string
-  default     = "10.0.2.0/24"
 }
 
 # =============================================================================
@@ -90,6 +84,13 @@ variable "jump_public_key" {
   type        = string
 }
 
+variable "vm_password" {
+  description = "Password for VM serial console access"
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
 # =============================================================================
 # Team VM Configuration
 # =============================================================================
@@ -122,57 +123,3 @@ variable "teams" {
   default = {}
 }
 
-# =============================================================================
-# Xray/VLESS Configuration
-# =============================================================================
-
-variable "vless_server" {
-  description = "VLESS proxy server address (hostname)"
-  type        = string
-  default     = ""
-}
-
-variable "vless_server_ip" {
-  description = "VLESS server IP address (excluded from TPROXY to avoid loop)"
-  type        = string
-  default     = ""
-}
-
-variable "vless_port" {
-  description = "VLESS proxy server port"
-  type        = number
-  default     = 443
-}
-
-variable "vless_uuid" {
-  description = "VLESS UUID for authentication"
-  type        = string
-  default     = ""
-  sensitive   = true
-}
-
-variable "vless_sni" {
-  description = "VLESS Reality SNI (serverName)"
-  type        = string
-  default     = ""
-}
-
-variable "vless_fingerprint" {
-  description = "VLESS Reality browser fingerprint"
-  type        = string
-  default     = "chrome"
-}
-
-variable "vless_public_key" {
-  description = "VLESS Reality public key"
-  type        = string
-  default     = ""
-  sensitive   = true
-}
-
-variable "vless_short_id" {
-  description = "VLESS Reality short ID"
-  type        = string
-  default     = ""
-  sensitive   = true
-}

@@ -1,11 +1,7 @@
-variable "public_cidr" {
-  description = "CIDR block for public subnet"
+variable "subnet_cidr" {
+  description = "CIDR block for the subnet"
   type        = string
-}
-
-variable "private_cidr" {
-  description = "CIDR block for private subnet"
-  type        = string
+  default     = "10.0.1.0/24"
 }
 
 variable "availability_zone_id" {
