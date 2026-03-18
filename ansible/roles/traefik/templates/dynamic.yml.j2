@@ -1,1 +1,12 @@
-# TODO: Add Traefik dynamic routing configuration
+http:
+  routers:
+    {{ team_id }}:
+      rule: "Host(`{{ team_id }}.{{ domain }}`) || HostRegexp(`.*-{{ team_id }}\\.{{ domain }}`)"
+      service: {{ team_id }}
+      tls:
+        certResolver: letsencrypt
+  services:
+    {{ team_id }}:
+      loadBalancer:
+        servers:
+          - url: "http://{{ team_ip }}:80"
