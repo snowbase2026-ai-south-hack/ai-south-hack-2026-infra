@@ -96,8 +96,10 @@ resource "local_file" "team_setup_bat" {
 
   filename        = "${path.module}/${var.secrets_path}/team-${each.key}/setup.bat"
   file_permission = "0644"
-  # Plain ASCII — no BOM, no Cyrillic; all output goes through setup.ps1
-  content = templatefile("${path.module}/../../templates/team/setup.bat.tpl", {})
+  # Plain ASCII — no BOM, no Cyrillic; standalone alternative to setup.ps1
+  content = templatefile("${path.module}/../../templates/team/setup.bat.tpl", {
+    team_id = each.key
+  })
 }
 
 resource "local_file" "team_setup_ps1" {

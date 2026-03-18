@@ -16,7 +16,7 @@ $ScriptDir  = Split-Path -Parent $MyInvocation.MyCommand.Path
 $SshDir     = Join-Path $HOME ".ssh\ai-south-hack"
 $KeyName    = "${team_id}-key"
 $MainConfig = Join-Path $HOME ".ssh\config"
-$IncludeLine = "Include $SshDir\ssh-config"
+$IncludeLine = "Include ~/.ssh/ai-south-hack/ssh-config"
 
 Write-Host "==> Создаём директорию $SshDir"
 New-Item -ItemType Directory -Force -Path $SshDir       | Out-Null
