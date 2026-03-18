@@ -1,0 +1,77 @@
+---
+# Синхронизирует SSH-ключи на edge и team VMs.
+# Управляет ТОЛЬКО authorized_keys — не трогает сервисы, маршруты, конфиги.
+# Запускать: ansible-playbook playbooks/sync-keys.yml
+# Также вызывается из edge.yml и team-vms.yml.
+
+- name: Sync team keys to edge jump user
+  hosts: edge
+  become: true
+  tasks:
+    - name: Read teams credentials
+      set_fact:
+        teams_data: "{{ lookup('file', playbook_dir + '/../../secrets/teams-credentials.json') | from_json }}"
+      delegate_to: localhost
+      become: false
+
+    - name: Check admin-keys.txt exists
+      stat:
+        path: "{{ playbook_dir }}/../../secrets/admin-keys.txt"
+      delegate_to: localhost
+      become: false
+      register: admin_keys_stat
+      failed_when: not admin_keys_stat.stat.exists
+
+    - name: Read admin public keys
+      set_fact:
+        admin_keys: "{{ lookup('file', playbook_dir + '/../../secrets/admin-keys.txt').splitlines() | select('match', '^ssh-') | list }}"
+      delegate_to: localhost
+      become: false
+
+    - name: Add team keys with port-forward restrictions to jump user
+      authorized_key:
+        user: jump
+        state: present
+        key: "{{ lookup('file', playbook_dir + '/../../secrets/team-' + item.key + '/' + item.value.user + '-key.pub') }}"
+        key_options: >-
+          command="/bin/false",no-pty,no-X11-forwarding,no-agent-forwarding,permitopen="{{ item.value.private_ip }}:22"
+      loop: "{{ teams_data.teams | dict2items }}"
+
+    - name: Add admin keys to edge jump user (no restrictions)
+      authorized_key:
+        user: jump
+        state: present
+        key: "{{ item }}"
+      loop: "{{ admin_keys }}"
+
+- name: Sync admin keys to team VMs
+  hosts: team_vms
+  become: true
+  tasks:
+    - name: Check admin-keys.txt exists
+      stat:
+        path: "{{ playbook_dir }}/../../secrets/admin-keys.txt"
+      delegate_to: localhost
+      become: false
+      register: admin_keys_stat
+      failed_when: not admin_keys_stat.stat.exists
+
+    - name: Read admin public keys
+      set_fact:
+        admin_keys: "{{ lookup('file', playbook_dir + '/../../secrets/admin-keys.txt').splitlines() | select('match', '^ssh-') | list }}"
+      delegate_to: localhost
+      become: false
+
+    - name: Ensure team key is present (idempotent)
+      # team_id — переменная из inventory/hosts.yml (например "dashboard"), используется для пути к ключу
+      authorized_key:
+        user: "{{ ansible_user }}"
+        state: present
+        key: "{{ lookup('file', playbook_dir + '/../../secrets/team-' + team_id + '/' + ansible_user + '-key.pub') }}"
+
+    - name: Add admin keys to team VM
+      authorized_key:
+        user: "{{ ansible_user }}"
+        state: present
+        key: "{{ item }}"
+      loop: "{{ admin_keys }}"
