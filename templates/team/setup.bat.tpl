@@ -24,21 +24,22 @@ echo =^> Updating SSH config
 if not exist "%MAIN_CONFIG%" (
     (echo !INCLUDE_LINE!) > "%MAIN_CONFIG%"
     echo    Added.
-) else (
-    findstr /i /c:"ai-south-hack" "%MAIN_CONFIG%" > nul 2>&1
-    if !errorlevel! == 0 (
-        echo    (already present, skipping)
-    ) else (
-        set "TMP=%TEMP%\ssh_cfg_%RANDOM%.tmp"
-        (echo !INCLUDE_LINE!)   > "!TMP!"
-        (echo.)                >> "!TMP!"
-        type "%MAIN_CONFIG%"  >> "!TMP!"
-        copy /y "!TMP!" "%MAIN_CONFIG%" > nul
-        del "!TMP!"
-        echo    Added.
-    )
+    goto :test
 )
+findstr /i /c:"ai-south-hack" "%MAIN_CONFIG%" > nul 2>&1
+if !errorlevel! == 0 (
+    echo    (already present, skipping)
+    goto :test
+)
+set "SSH_TMP=%TEMP%\ssh_cfg_%RANDOM%.tmp"
+(echo !INCLUDE_LINE!)   > "!SSH_TMP!"
+(echo.)                >> "!SSH_TMP!"
+type "%MAIN_CONFIG%"  >> "!SSH_TMP!"
+copy /y "!SSH_TMP!" "%MAIN_CONFIG%" > nul
+del "!SSH_TMP!"
+echo    Added.
 
+:test
 echo =^> Testing connection...
 ssh -o ConnectTimeout=10 -o BatchMode=yes ${team_id} echo OK > nul 2>&1
 if !errorlevel! == 0 (
@@ -61,7 +62,7 @@ exit /b 0
 
 :error
 echo.
-echo   [ERROR] Failed to copy files. Make sure you run this from the team folder.
+echo   [ERROR] Setup failed. Make sure you run this from the team folder and have write access.
 echo.
 pause
 exit /b 1
