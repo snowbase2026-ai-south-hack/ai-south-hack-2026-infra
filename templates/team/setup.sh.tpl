@@ -4,6 +4,9 @@
 # =============================================================================
 set -e
 
+# Keep terminal open on error (useful when double-clicking the script)
+trap 'echo ""; echo "x  Ошибка на строке $LINENO. Нажми Enter для выхода."; read -r; exit 1' ERR
+
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 SSH_DIR="$HOME/.ssh/ai-south-hack"
 KEY_NAME="${team_id}-key"
@@ -54,3 +57,5 @@ else
   echo "    ssh ${team_id}"
   echo ""
 fi
+
+read -rp "Нажми Enter для выхода..."

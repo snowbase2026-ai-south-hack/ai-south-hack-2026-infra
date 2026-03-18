@@ -3,6 +3,15 @@
 # =============================================================================
 $ErrorActionPreference = "Stop"
 
+# Keep window open on both success and error
+trap {
+  Write-Host ""
+  Write-Host "x  Ошибка: $_" -ForegroundColor Red
+  Write-Host ""
+  Read-Host "Нажми Enter для выхода"
+  exit 1
+}
+
 $ScriptDir  = Split-Path -Parent $MyInvocation.MyCommand.Path
 $SshDir     = Join-Path $HOME ".ssh\ai-south-hack"
 $KeyName    = "${team_id}-key"
@@ -59,3 +68,5 @@ if ($LASTEXITCODE -eq 0) {
   Write-Host "   ssh ${team_id}" -ForegroundColor Cyan
   Write-Host ""
 }
+
+Read-Host "Нажми Enter для выхода"
