@@ -137,28 +137,49 @@ Admin-ключи добавляются на:
 
 ```
 Шаг 1: Создать secrets/admin-keys.txt с admin pubkey-ами
-Шаг 2: Написать ansible/playbooks/sync-keys.yml
+
+Шаг 2: Написать ansible/playbooks/sync-keys.yml (новый файл, sync-jump-keys.yml пока НЕ удалять)
+
 Шаг 3: ansible-playbook playbooks/sync-keys.yml
         → admin-ключи добавлены на все VM (страховка доступа)
-Шаг 4: # Сначала проверить точные пути ресурсов:
+        → jump authorized_keys на edge обновлён на {user}-key
+
+Шаг 4: Внести все изменения в код (Terraform + Ansible):
+        4a. environments/dev/main.tf:
+            - Добавить moved{} блок (team_vm_key → team_key)
+            - Удалить ресурсы tls_private_key.team_jump_key и tls_private_key.team_github_key
+        4b. environments/dev/credentials.tf:
+            - Убрать передачу jump/github ключей в модуль
+        4c. modules/team-credentials/variables.tf:
+            - Удалить переменные team_jump_*/team_github_*
+        4d. modules/team-credentials/main.tf:
+            - Удалить local_file ресурсы для jump/github ключей
+            - Обновить teams_credentials.json (убрать jump_key, github_key из files{})
+        4e. templates/team/ssh-config.tpl:
+            - Заменить -jump-key → -key в IdentityFile bastion-хоста
+        4f. ansible/playbooks/edge.yml, team-vms.yml:
+            - Заменить импорт sync-jump-keys.yml → sync-keys.yml
+
+Шаг 5: Убрать из стейта ресурсы, которые удалили из кода (до apply!):
+        # Проверить точные пути:
         terraform state list | grep -E 'jump|github'
 
-        # Удалить для каждой команды (ресурсы вида ["team-id"]):
-        # В модуле team-credentials:
+        # Удалить для каждой команды (пример для "dashboard"):
         terraform state rm 'module.team_credentials.local_file.team_jump_private_key["dashboard"]'
         terraform state rm 'module.team_credentials.local_file.team_jump_public_key["dashboard"]'
         terraform state rm 'module.team_credentials.local_file.team_github_private_key["dashboard"]'
         terraform state rm 'module.team_credentials.local_file.team_github_public_key["dashboard"]'
-        # В environments/dev (генерация ключей):
         terraform state rm 'tls_private_key.team_jump_key["dashboard"]'
         terraform state rm 'tls_private_key.team_github_key["dashboard"]'
         # Повторить для каждой команды из var.teams
-Шаг 5: terraform apply
+
+Шаг 6: terraform apply
         → moved{} переименует team_vm_key → team_key без пересоздания VM
         → новые secrets-файлы без jump/deploy ключей
-Шаг 6: ansible-playbook playbooks/sync-keys.yml
-        → edge обновлён: jump authorized_keys использует {user}-key вместо {user}-jump-key
-Шаг 7: Удалить старые файлы из secrets/ (jump-key, deploy-key)
+
+Шаг 7: Удалить ansible/playbooks/sync-jump-keys.yml (заменён на sync-keys.yml)
+
+Шаг 8: Удалить старые файлы из secrets/ (jump-key, deploy-key)
 ```
 
 ## Что НЕ меняется
