@@ -91,6 +91,15 @@ resource "local_file" "team_setup_sh" {
   file_permission = "0755"
 }
 
+resource "local_file" "team_setup_bat" {
+  for_each = var.teams
+
+  filename        = "${path.module}/${var.secrets_path}/team-${each.key}/setup.bat"
+  file_permission = "0644"
+  # Plain ASCII — no BOM, no Cyrillic; all output goes through setup.ps1
+  content = templatefile("${path.module}/../../templates/team/setup.bat.tpl", {})
+}
+
 resource "local_file" "team_setup_ps1" {
   for_each = var.teams
 
@@ -139,6 +148,7 @@ resource "local_file" "teams_credentials_json" {
           key        = "${team_id}-key"
           ssh_config = "ssh-config"
           setup_sh   = "setup.sh"
+          setup_bat  = "setup.bat"
           setup_ps1  = "setup.ps1"
           readme     = "README.md"
         }

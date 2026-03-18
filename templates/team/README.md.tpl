@@ -20,20 +20,18 @@
 
 ### Windows
 
-1. Кликни **правой кнопкой** на файл `setup.ps1`
-2. Выбери **«Запустить с помощью PowerShell»**
-
-   > Если появится ошибка о политике выполнения:
-   > открой PowerShell и выполни один раз:
-   > ```
-   > Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
-   > ```
-   > Затем снова запусти `setup.ps1`
-
-3. Подключись:
+1. Дважды кликни на файл **`setup.bat`** — он сам запустит PowerShell с нужными правами
+2. Подключись:
    ```
    ssh ${team_id}
    ```
+
+   > Если bat не запускается (заблокирован антивирусом), кликни правой кнопкой на `setup.ps1`
+   > → **«Запустить с помощью PowerShell»**.
+   > Если увидишь ошибку о политике выполнения, открой PowerShell и выполни один раз:
+   > ```
+   > Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
+   > ```
 
 ---
 
@@ -88,7 +86,8 @@ ssh ${team_id}
 | `${team_id}-key.pub` | Публичный SSH-ключ |
 | `ssh-config` | SSH-конфиг с настройками bastion и твоего сервера |
 | `setup.sh` | Скрипт установки для Mac/Linux |
-| `setup.ps1` | Скрипт установки для Windows |
+| `setup.bat` | Запускалка для Windows (дважды кликнуть) |
+| `setup.ps1` | Скрипт установки для Windows (запускается через setup.bat) |
 
 ---
 
