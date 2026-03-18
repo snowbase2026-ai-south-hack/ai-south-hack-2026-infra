@@ -97,6 +97,8 @@ resource "tls_private_key" "team_key" {
   algorithm = "ED25519"
 }
 
+# Rename from team_vm_key — preserves key material in state, prevents VM recreation.
+# Keep until all team_vm_key state entries are confirmed migrated (after terraform apply).
 moved {
   from = tls_private_key.team_vm_key
   to   = tls_private_key.team_key
