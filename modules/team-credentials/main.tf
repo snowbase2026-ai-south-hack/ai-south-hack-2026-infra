@@ -17,60 +17,22 @@ resource "local_file" "team_dir_marker" {
 }
 
 # =============================================================================
-# Jump Keys (for bastion access)
+# Keys
 # =============================================================================
 
-resource "local_file" "team_jump_private_key" {
-  for_each = var.teams
-
-  filename        = "${path.module}/${var.secrets_path}/team-${each.key}/${each.value.user}-jump-key"
-  content         = var.team_jump_private_keys[each.key]
-  file_permission = "0600"
-}
-
-resource "local_file" "team_jump_public_key" {
-  for_each = var.teams
-
-  filename = "${path.module}/${var.secrets_path}/team-${each.key}/${each.value.user}-jump-key.pub"
-  content  = var.team_jump_public_keys[each.key]
-}
-
-# =============================================================================
-# VM Keys (for team VM access)
-# =============================================================================
-
-resource "local_file" "team_vm_private_key" {
+resource "local_file" "team_private_key" {
   for_each = var.teams
 
   filename        = "${path.module}/${var.secrets_path}/team-${each.key}/${each.value.user}-key"
-  content         = var.team_vm_private_keys[each.key]
+  content         = var.team_private_keys[each.key]
   file_permission = "0600"
 }
 
-resource "local_file" "team_vm_public_key" {
+resource "local_file" "team_public_key" {
   for_each = var.teams
 
   filename = "${path.module}/${var.secrets_path}/team-${each.key}/${each.value.user}-key.pub"
-  content  = var.team_vm_public_keys[each.key]
-}
-
-# =============================================================================
-# GitHub Deploy Keys
-# =============================================================================
-
-resource "local_file" "team_github_private_key" {
-  for_each = var.teams
-
-  filename        = "${path.module}/${var.secrets_path}/team-${each.key}/${each.value.user}-deploy-key"
-  content         = var.team_github_private_keys[each.key]
-  file_permission = "0600"
-}
-
-resource "local_file" "team_github_public_key" {
-  for_each = var.teams
-
-  filename = "${path.module}/${var.secrets_path}/team-${each.key}/${each.value.user}-deploy-key.pub"
-  content  = var.team_github_public_keys[each.key]
+  content  = var.team_public_keys[each.key]
 }
 
 # =============================================================================
@@ -103,6 +65,39 @@ resource "local_file" "team_ssh_config" {
 }
 
 # =============================================================================
+# Participant Setup Scripts
+# =============================================================================
+
+resource "local_file" "team_setup_sh" {
+  for_each = var.teams
+
+  filename        = "${path.module}/${var.secrets_path}/team-${each.key}/setup.sh"
+  content = templatefile("${path.module}/../../templates/team/setup.sh.tpl", {
+    team_user = each.value.user
+  })
+  file_permission = "0755"
+}
+
+resource "local_file" "team_setup_ps1" {
+  for_each = var.teams
+
+  filename = "${path.module}/${var.secrets_path}/team-${each.key}/setup.ps1"
+  content = templatefile("${path.module}/../../templates/team/setup.ps1.tpl", {
+    team_user = each.value.user
+  })
+}
+
+resource "local_file" "team_readme" {
+  for_each = var.teams
+
+  filename = "${path.module}/${var.secrets_path}/team-${each.key}/README.md"
+  content = templatefile("${path.module}/../../templates/team/README.md.tpl", {
+    team_user = each.value.user
+    domain    = var.domain
+  })
+}
+
+# =============================================================================
 # Teams Credentials Summary JSON
 # =============================================================================
 
@@ -120,13 +115,14 @@ resource "local_file" "teams_credentials_json" {
         user        = team_config.user
         private_ip  = team_config.private_ip
         domain      = "${team_config.user}.${var.domain}"
-        ssh_command = "ssh -F ~/.ssh/ai-camp/ssh-config ${team_config.user}"
+        ssh_command = "ssh -F ~/.ssh/ai-south-hack/ssh-config ${team_config.user}"
         folder      = "secrets/team-${team_id}/"
         files = {
-          jump_key   = "${team_config.user}-jump-key"
-          vm_key     = "${team_config.user}-key"
-          github_key = "${team_config.user}-deploy-key"
+          key       = "${team_config.user}-key"
           ssh_config = "ssh-config"
+          setup_sh  = "setup.sh"
+          setup_ps1 = "setup.ps1"
+          readme    = "README.md"
         }
       }
     }
