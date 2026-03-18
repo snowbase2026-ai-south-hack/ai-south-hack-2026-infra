@@ -91,33 +91,27 @@ locals {
 # SSH Keys Generation for Teams
 # =============================================================================
 
-# Jump keys (for bastion access) - unique per team
-resource "tls_private_key" "team_jump_key" {
+# Single key per team — used for both bastion access (with permitopen) and VM login
+resource "tls_private_key" "team_key" {
   for_each  = var.teams
   algorithm = "ED25519"
 }
 
-# VM keys (for team VM access)
-resource "tls_private_key" "team_vm_key" {
-  for_each  = var.teams
-  algorithm = "ED25519"
-}
-
-# GitHub deploy keys (for CI/CD)
-resource "tls_private_key" "team_github_key" {
-  for_each  = var.teams
-  algorithm = "ED25519"
+# Rename from team_vm_key — preserves key material in state, prevents VM recreation.
+# Keep until all team_vm_key state entries are confirmed migrated (after terraform apply).
+moved {
+  from = tls_private_key.team_vm_key
+  to   = tls_private_key.team_key
 }
 
 # =============================================================================
-# Module: Network (public + private subnets)
+# Module: Network (single subnet)
 # =============================================================================
 
 module "network" {
   source = "../../modules/network"
 
-  public_cidr          = var.public_cidr
-  private_cidr         = var.private_cidr
+  subnet_cidr          = var.subnet_cidr
   availability_zone_id = local.az.id
   project_name         = var.project_name
 }
@@ -130,8 +124,8 @@ module "security" {
   source = "../../modules/security"
 
   name                 = var.project_name
-  public_cidr          = var.public_cidr
-  private_cidr         = var.private_cidr
+  subnet_cidr          = var.subnet_cidr
+  edge_private_ip      = cidrhost(var.subnet_cidr, 10)
   availability_zone_id = local.az.id
 }
 
@@ -147,12 +141,12 @@ module "edge" {
   disk_size              = var.edge_disk_size
   availability_zone_id   = local.az.id
   availability_zone_name = var.availability_zone_name
-  public_subnet_name     = module.network.public_subnet_name
-  private_subnet_name    = module.network.private_subnet_name
+  subnet_name            = module.network.subnet_name
   security_group_id      = module.security.edge_sg_id
+  ip_address             = cidrhost(var.subnet_cidr, 10)
   user_name              = var.jump_user
   public_key             = var.jump_public_key
-  private_ip             = cidrhost(var.private_cidr, 1)
+  password               = var.vm_password
 
   depends_on = [module.network, module.security]
 }
@@ -169,12 +163,11 @@ module "team_vm" {
   disk_type_id           = local.ssd_disk_type.id
   disk_size              = var.team_disk_size
   availability_zone_name = var.availability_zone_name
-  private_subnet_name    = module.network.private_subnet_name
+  subnet_name            = module.network.subnet_name
   security_group_id      = module.security.team_sg_id
-
-  # Use generated VM key as primary SSH key for each team
+  password               = var.vm_password
   team_public_keys = {
-    for team_id, key in tls_private_key.team_vm_key : team_id => key.public_key_openssh
+    for team_id, key in tls_private_key.team_key : team_id => key.public_key_openssh
   }
 
   depends_on = [module.network, module.security]
@@ -192,6 +185,7 @@ resource "local_file" "ansible_inventory" {
     edge_public_ip  = module.edge.public_ip
     edge_private_ip = module.edge.private_ip
     edge_user       = var.jump_user
+    secrets_dir     = abspath("${path.module}/../../secrets")
     teams = {
       for id, team in var.teams : id => {
         user       = team.user

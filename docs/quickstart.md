@@ -1,152 +1,93 @@
 # Быстрый старт для команд
 
-> **Последнее обновление:** 2026-01-29  
-> **Связанные документы:** [user-guide.md](user-guide.md), [troubleshooting.md](troubleshooting.md)
+> **Последнее обновление:** 2026-03-18
+> **Связанные документы:** [user-guide.md](user-guide.md)
 
 ## Обзор
 
-Это руководство поможет вам быстро начать работу с инфраструктурой AI Talent Camp. За 10 минут вы:
+Это руководство поможет вам быстро начать работу с инфраструктурой AI South Hub 2026. За 10 минут вы:
 - Получите доступ к своей VM
 - Проверите работу интернета и proxy
 - Развернёте тестовое приложение
 
 ## Шаг 1: Получение credentials
 
-Администратор предоставит вам папку `team-XX` с ключами доступа.
+Администратор предоставит вам папку с ключами доступа (например, `team-team01`).
 
 **Содержимое папки:**
 ```
-team-01/
-├── team01-jump-key      # Ключ для подключения к bastion
-├── team01-key           # Ключ для подключения к вашей VM
-├── team01-deploy-key    # Ключ для GitHub Actions (опционально)
-├── *.pub                # Публичные ключи
-└── ssh-config           # Готовый SSH конфиг
+team-team01/
+├── team01-key      # Приватный SSH-ключ (один — для bastion и VM)
+├── team01-key.pub  # Публичный ключ
+├── ssh-config      # Готовый SSH конфиг
+├── setup.sh        # Скрипт установки для Mac/Linux
+├── setup.bat       # Скрипт установки для Windows (CMD)
+├── setup.ps1       # Скрипт установки для Windows (PowerShell)
+└── README.md       # Инструкция
 ```
 
 ## Шаг 2: Настройка SSH
 
-### Вариант A: Использование готового конфига
+### Mac / Linux
 
 ```bash
-# 1. Скопировать папку с ключами
-cp -r team-01 ~/.ssh/ai-camp
-
-# 2. Установить правильные права доступа
-chmod 700 ~/.ssh/ai-camp
-chmod 600 ~/.ssh/ai-camp/*-key
-chmod 644 ~/.ssh/ai-camp/*.pub
-chmod 644 ~/.ssh/ai-camp/ssh-config
-
-# 3. Подключиться
-ssh -F ~/.ssh/ai-camp/ssh-config team01
+cd ~/Downloads/team-team01
+bash setup.sh
 ```
 
-### Вариант B: Добавить в ~/.ssh/config
+Скрипт скопирует ключ в `~/.ssh/ai-south-hack/`, добавит `Include` в `~/.ssh/config` и проверит соединение.
 
-Если хотите интегрировать с вашим SSH конфигом:
-
+После этого:
 ```bash
-# Скопировать ключи
-cp team-01/*-key* ~/.ssh/
-
-# Добавить в ~/.ssh/config
-cat >> ~/.ssh/config << 'EOF'
-
-Host ai-camp-bastion
-    HostName bastion.camp.aitalenthub.ru
-    User jump
-    IdentityFile ~/.ssh/team01-jump-key
-    IdentitiesOnly yes
-
-Host team01
-    HostName 10.20.0.8
-    User team01
-    ProxyJump ai-camp-bastion
-    IdentityFile ~/.ssh/team01-key
-    IdentitiesOnly yes
-EOF
-
-# Подключиться
 ssh team01
 ```
 
-### Вариант C: Подключение через VSCode/Cursor
+### Windows (CMD — рекомендуется)
 
-Работа через IDE даёт вам возможность редактировать файлы на удаленной машине как локальные, использовать терминал, отладку и все расширения.
-
-#### VSCode
-
-**1. Установить расширение Remote - SSH**
-
-- Откройте VSCode
-- Нажмите `Cmd/Ctrl+Shift+X` (Extensions)
-- Найдите и установите **"Remote - SSH"** от Microsoft
-- Перезапустите VSCode (если требуется)
-
-**2. Настроить SSH конфиг**
-
-```bash
-# Скопировать папку с ключами
-cp -r team-01 ~/.ssh/ai-camp
-
-# Установить правильные права доступа
-chmod 700 ~/.ssh/ai-camp
-chmod 600 ~/.ssh/ai-camp/*-key
-chmod 644 ~/.ssh/ai-camp/*.pub
-chmod 644 ~/.ssh/ai-camp/ssh-config
+Двойной клик на `setup.bat`. После завершения подключиться:
+```
+ssh team01
 ```
 
-**3. Добавить конфиг в VSCode**
+### Windows (PowerShell)
 
-Вариант A - использовать готовый конфиг напрямую:
-- Нажмите `Cmd/Ctrl+Shift+P`
-- Введите `Remote-SSH: Connect to Host...`
-- Нажмите `Configure SSH Hosts...`
-- Выберите `~/.ssh/config`
-- Добавьте в конец файла содержимое из `~/.ssh/ai-camp/ssh-config`:
+Правая кнопка на `setup.ps1` → «Запустить с помощью PowerShell».
+
+> Если ошибка политики выполнения, выполните один раз:
+> ```
+> Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
+> ```
+
+### Ручная установка (если скрипты не работают)
 
 ```bash
-# Скопировать конфиг
-cat ~/.ssh/ai-camp/ssh-config >> ~/.ssh/config
+mkdir -p ~/.ssh/ai-south-hack
+cp team01-key     ~/.ssh/ai-south-hack/
+cp team01-key.pub ~/.ssh/ai-south-hack/
+cp ssh-config     ~/.ssh/ai-south-hack/
+chmod 600 ~/.ssh/ai-south-hack/team01-key
+
+# Добавить Include в начало ~/.ssh/config
+echo "Include ~/.ssh/ai-south-hack/ssh-config" | cat - ~/.ssh/config > /tmp/cfg && mv /tmp/cfg ~/.ssh/config
+
+ssh team01
 ```
 
-Или скопируйте вручную содержимое файла `ssh-config`.
+### Подключение через VSCode / Cursor
 
-**4. Подключиться**
+После выполнения `setup.sh` (или `setup.bat`/`setup.ps1`) конфиг уже добавлен в `~/.ssh/config`. Дальше:
 
-- Нажмите `Cmd/Ctrl+Shift+P`
-- Введите `Remote-SSH: Connect to Host...`
-- Выберите `team01` (или ваш номер команды)
-- Подождите пока VSCode подключится
-- Откройте папку `/home/team01/workspace`
+1. Установите расширение **Remote - SSH** (VSCode/Cursor: `Cmd/Ctrl+Shift+X`)
+2. `Cmd/Ctrl+Shift+P` → `Remote-SSH: Connect to Host...` → выберите `team01`
+3. Откройте папку `/home/team01/` в Explorer
 
-**Готово!** Теперь вы работаете на удаленной машине. Все файлы, терминал и расширения работают на team VM.
+**Готово!** Терминал, файлы и расширения работают на team VM.
 
-#### Cursor
+**Порты:** VSCode/Cursor автоматически пробрасывают порты — если запустите приложение на порту 3000, IDE предложит открыть его в браузере локально.
 
-Cursor построен на базе VSCode и использует те же расширения:
-
-1. Откройте Cursor
-2. Установите расширение **"Remote - SSH"** (как в VSCode)
-3. Следуйте той же инструкции, что и для VSCode
-4. Подключитесь к `team01`
-
-#### Полезные советы для работы через IDE
-
-- **Терминал:** `Terminal → New Terminal` открывает терминал прямо на team VM
-- **Файлы:** Все файлы в Explorer - это файлы на удаленной машине
-- **Расширения:** Некоторые расширения нужно установить отдельно для Remote
-- **Порты:** VSCode автоматически пробрасывает порты (например, если запустите приложение на порту 3000, VSCode предложит открыть его в браузере)
-
-#### Troubleshooting
-
-**Ошибка "Could not establish connection":**
-- Проверьте права на ключи: `ls -la ~/.ssh/ai-camp/`
-- Убедитесь что можете подключиться через обычный SSH: `ssh -F ~/.ssh/ai-camp/ssh-config team01`
-
-**Запрашивает пароль:**
-- Права на ключи неправильные, выполните: `chmod 600 ~/.ssh/ai-camp/*-key`
+**Troubleshooting:**
+- Ошибка соединения: `ssh -v team01` для диагностики
+- Запрашивает пароль: `chmod 600 ~/.ssh/ai-south-hack/team01-key`
 
 ## Шаг 3: Проверка доступа
 
@@ -170,154 +111,75 @@ df -h
 ```
 
 **Ожидаемые результаты:**
-- ✅ Внешний IP совпадает с IP edge сервера
-- ✅ Google.com доступен
-- ✅ OpenAI API доступен (HTTP 200 или 401)
-- ✅ Hostname = `team01-vm` или подобное
-- ✅ Диск 65GB, свободно ~55GB
+- Внешний IP совпадает с IP edge сервера
+- Google.com доступен
+- OpenAI API доступен (HTTP 200 или 401)
+- Диск 65GB, свободно ~55GB
 
-## Шаг 4: Ваш домен
+## Шаг 4: Ваш домен и HTTPS
 
-Каждая команда получает доменное имя для публикации своего приложения.
+Ваш домен: **`{team_id}.south.aitalenthub.ru`**
 
-### Стандартный домен
+HTTPS сертификат выдаётся автоматически через Let's Encrypt — ничего настраивать не нужно. Достаточно задеплоить приложение через Docker (шаг 5).
 
-Ваш домен: **`teamXX.camp.aitalenthub.ru`**
-
-Где `XX` - номер вашей команды (например, `team01`, `team02`).
-
-### Переименование домена
-
-Вы можете запросить изменение части `teamXX` на своё название:
-
-1. Создайте [issue в репозитории](https://github.com/AI-Talent-Camp-2026/ai-talent-camp-2026-infra/issues/new)
-2. Укажите текущий домен и желаемое имя
-3. Пример: `team01.camp.aitalenthub.ru` → `myteam.camp.aitalenthub.ru`
-4. Администратор обновит конфигурацию
-
-**Требования к имени:**
-- Только латиница, цифры и дефис
-- Длина: 3-20 символов
-- Примеры: `myteam`, `cool-project`, `hack2026`
-
-### Использование собственного домена
-
-Если у вас есть свой домен, направьте его на выданный поддомен:
-
-**1. Создайте CNAME запись у своего DNS провайдера:**
-
+Если у вас есть свой домен, создайте CNAME запись:
 ```
-Тип:     CNAME
-Имя:     app (или любое другое)
-Значение: team01.camp.aitalenthub.ru
-TTL:     Auto или 300
+app.mydomain.com  →  CNAME  →  team01.south.aitalenthub.ru
 ```
 
-**2. Проверьте настройку (может занять до 48 часов):**
-
-```bash
-dig app.mydomain.com
-# Должна быть CNAME запись на team01.camp.aitalenthub.ru
-```
-
-**3. Настройте SSL на вашей VM:**
-
-```bash
-# Установите certbot (если еще не установлен)
-sudo apt install -y certbot python3-certbot-nginx
-
-# Получите сертификат для вашего домена
-sudo certbot --nginx -d app.mydomain.com
-```
-
-Подробнее см. [user-guide.md - Работа с доменами](user-guide.md#работа-с-доменами)
+Подробнее — [user-guide.md - Работа с доменами](user-guide.md#работа-с-доменами)
 
 ## Шаг 5: Развертывание тестового приложения
 
-Давайте развернём простое веб-приложение для проверки routing.
-
-### Python + Flask
+На team VM предустановлен Docker и Traefik. Публикация сервиса — через docker labels.
 
 ```bash
-# Установить Python и pip
-sudo apt update
-sudo apt install -y python3 python3-pip python3-venv
-
-# Создать приложение
-mkdir -p ~/workspace/test-app
-cd ~/workspace/test-app
-
-# Создать виртуальное окружение
-python3 -m venv venv
-source venv/bin/activate
-
-# Установить Flask
-pip install flask
-
 # Создать простое приложение
-cat > app.py << 'EOF'
-from flask import Flask, jsonify
-import socket
+mkdir -p ~/workspace/test-app && cd ~/workspace/test-app
 
-app = Flask(__name__)
+cat > docker-compose.yml << 'EOF'
+services:
+  app:
+    image: containous/whoami
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.app.rule=PathPrefix(`/`)"
+    networks:
+      - traefik
 
-@app.route('/')
-def home():
-    return jsonify({
-        'status': 'ok',
-        'hostname': socket.gethostname(),
-        'message': 'AI Talent Camp Infrastructure'
-    })
-
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=8000)
+networks:
+  traefik:
+    external: true
 EOF
 
-# Запустить приложение
-python app.py
+docker compose up -d
 ```
 
-Приложение запустится на `http://10.20.0.8:8000`
+Через несколько секунд сервис будет доступен по `https://{team_id}.south.aitalenthub.ru`.
 
-### Проверка с вашего компьютера
-
-Для доступа к приложению извне нужно настроить Nginx и SSL сертификат (см. [user-guide.md](user-guide.md#настройка-окружения)).
-
-Временно можно проверить через SSH tunnel:
+### Проверка через SSH tunnel (без Traefik)
 
 ```bash
-# На вашем компьютере (в новом терминале)
-ssh -F ~/.ssh/ai-camp/ssh-config -L 8000:localhost:8000 team01
+# На вашем компьютере (новый терминал)
+ssh -L 8000:localhost:8000 team01
 
-# Откройте в браузере
-http://localhost:8000
-```
-
-Должны увидеть JSON ответ со статусом "ok".
-
-## Шаг 6: Остановка приложения
-
-```bash
-# В терминале где запущен Flask, нажмите Ctrl+C
-
-# Деактивировать venv
-deactivate
+# На VM запустите приложение на порту 8000
+# В браузере откройте http://localhost:8000
 ```
 
 ## Следующие шаги
 
-Вы успешно подключились и развернули тестовое приложение! 🎉
+Вы успешно подключились и развернули тестовое приложение!
 
 **Что дальше:**
 
 1. **Настроить production окружение**
-   - Установить веб-сервер (Nginx)
-   - Получить SSL сертификат
-   - Настроить systemd service для автозапуска
+   - Traefik уже установлен, HTTPS работает автоматически через labels
+   - Добавьте нужные labels в docker-compose.yml (см. шаг 5)
    - См. [user-guide.md](user-guide.md)
 
 2. **Настроить CI/CD**
-   - Использовать `team01-deploy-key` для GitHub Actions
+   - Использовать `{team_id}-key` для GitHub Actions
    - Автоматический deploy при push
    - См. [user-guide.md - CI/CD](user-guide.md#cicd-и-автодеплой)
 
@@ -348,13 +210,13 @@ sudo tail -f /var/log/syslog  # Syslog
 ## Получение помощи
 
 **Проблемы с подключением?**
-- [troubleshooting.md#ssh-connection-refused](troubleshooting.md#ssh-connection-refused)
+- [user-guide.md#troubleshooting](user-guide.md#troubleshooting)
 
 **Нет доступа в интернет?**
-- [troubleshooting.md#vm-не-имеет-доступа-в-интернет](troubleshooting.md#vm-не-имеет-доступа-в-интернет)
+- [user-guide.md#troubleshooting](user-guide.md#troubleshooting)
 
 **Проблемы с AI API?**
-- [troubleshooting.md#tproxy-не-работает](troubleshooting.md#tproxy-не-работает)
+- [user-guide.md#troubleshooting](user-guide.md#troubleshooting)
 
 **Вопросы по документации:**
 - См. [README.md](../README.md) для навигации по всем документам
@@ -363,4 +225,3 @@ sudo tail -f /var/log/syslog  # Syslog
 
 - [user-guide.md](user-guide.md) - подробное руководство пользователя
 - [architecture.md](architecture.md) - как устроена инфраструктура
-- [troubleshooting.md](troubleshooting.md) - решение проблем

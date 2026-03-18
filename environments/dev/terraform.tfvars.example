@@ -12,7 +12,7 @@
 # Project ID from console.cloud.ru (URL of your project)
 project_id = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
 
-# Service account API key (generate in Cloud.ru console → Service accounts → Keys)
+# Service account API key (generate in Cloud.ru console -> Service accounts -> Keys)
 auth_key_id = ""
 auth_secret = ""
 
@@ -20,8 +20,7 @@ auth_secret = ""
 # Network Configuration
 # =============================================================================
 
-public_cidr  = "10.0.1.0/24"
-private_cidr = "10.0.2.0/24"
+subnet_cidr = "10.0.1.0/24"
 
 # =============================================================================
 # Project Configuration
@@ -50,31 +49,12 @@ team_memory    = 8    # GB
 team_disk_size = 65   # GB
 
 # Team definitions - start empty, add incrementally
-# Each team needs: user (VM username), public_keys (extra SSH keys), ip (static IP in private subnet)
+# Each team needs: user (VM username), public_keys (extra SSH keys), ip (static IP in subnet)
 teams = {}
 
 # Example:
 # teams = {
-#   "team01"    = { user = "team01",    public_keys = [], ip = "10.0.2.11" }
-#   "dashboard" = { user = "dashboard", public_keys = [], ip = "10.0.2.100" }
-#   "shared"    = { user = "shared",    public_keys = [], ip = "10.0.2.101" }
+#   "team01"    = { user = "team01",    public_keys = [], ip = "10.0.1.11" }
+#   "dashboard" = { user = "dashboard", public_keys = [], ip = "10.0.1.100" }
+#   "shared"    = { user = "shared",    public_keys = [], ip = "10.0.1.101" }
 # }
-
-# =============================================================================
-# Xray/VLESS Configuration (for transparent proxy through AI APIs)
-# =============================================================================
-# PREFERRED METHOD: Edit secrets/xray-config.json directly (entire JSON config)
-#
-# ALTERNATIVE METHOD: Use variables below (ignored if secrets/xray-config.json exists)
-
-# VLESS server settings
-vless_server    = ""                    # e.g., "your-vless-server.example.com"
-vless_server_ip = ""                    # IP address (to exclude from TPROXY)
-vless_port      = 443
-vless_uuid      = ""                    # VLESS UUID
-
-# Reality settings (required if vless_server is set)
-vless_sni         = ""                  # e.g., "www.microsoft.com"
-vless_fingerprint = "chrome"            # chrome, firefox, safari, etc.
-vless_public_key  = ""                  # Reality public key
-vless_short_id    = ""                  # Reality short ID

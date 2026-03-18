@@ -1,11 +1,11 @@
 # Руководство разработчика
 
-> **Последнее обновление:** 2026-01-29  
+> **Последнее обновление:** 2026-03-17
 > **Связанные документы:** [modules.md](modules.md), [changelog.md](changelog.md)
 
 ## Обзор
 
-Это руководство для контрибьюторов и разработчиков, работающих с AI Talent Camp Infrastructure.
+Это руководство для контрибьюторов и разработчиков, работающих с AI South Hub 2026 Infrastructure.
 
 ---
 
@@ -23,50 +23,51 @@
 ## Структура проекта
 
 ```
-ai-talent-camp-2026-infra/
+ai-south-hack-2026-infra/
 ├── modules/                    # Terraform модули
-│   ├── network/               # VPC и подсети
+│   ├── network/               # Единая подсеть 10.0.1.0/24
 │   ├── security/              # Security groups
-│   ├── routing/               # Route tables
-│   ├── edge/                  # Edge/NAT VM
+│   ├── edge/                  # Edge/NAT VM с floating IP
 │   ├── team_vm/               # VM для команд
-│   ├── team-credentials/      # Управление credentials
-│   └── config-sync/           # Синхронизация конфигов
+│   └── team-credentials/      # Управление credentials
 │
 ├── environments/              # Окружения
 │   └── dev/                  # Development environment
 │       ├── main.tf           # Основная конфигурация
 │       ├── variables.tf      # Переменные
 │       ├── outputs.tf        # Outputs
-│       ├── credentials.tf    # Credentials management
-│       └── config-sync.tf    # Config sync
+│       └── credentials.tf    # Credentials management
 │
-├── templates/                 # Конфигурационные шаблоны
-│   ├── traefik/              # Traefik configs
-│   ├── xray/                 # Xray config template
-│   └── team/                 # Team SSH configs
+├── ansible/                   # Ansible конфигурация
+│   ├── ansible.cfg           # Конфигурация ansible-core 2.20+
+│   ├── playbooks/            # site.yml, edge.yml, team-vms.yml
+│   ├── roles/                # common, docker, nat, traefik, xray
+│   ├── group_vars/           # all.yml, edge.yml, team_vms.yml
+│   ├── inventory/            # hosts.yml (генерируется Terraform)
+│   └── templates/            # inventory.yml.tpl (Terraform templatefile)
 │
 ├── docs/                      # Документация
 │   ├── quickstart.md         # Быстрый старт
 │   ├── architecture.md       # Архитектура
 │   ├── admin-guide.md        # Руководство администратора
 │   ├── user-guide.md         # Руководство пользователя
-│   ├── xray-configuration.md # Конфигурация Xray
-│   ├── troubleshooting.md    # Решение проблем
 │   ├── modules.md            # Документация модулей
 │   ├── changelog.md          # История изменений
 │   └── development.md        # Это руководство
 │
 ├── secrets/                   # Gitignored - генерируемые ключи
-│   ├── team-01/
-│   ├── team-02/
-│   ├── xray-config.json
-│   └── traefik-dynamic.yml
+│   ├── team-{id}/             # Папка каждой команды
+│   │   ├── {id}-key           # Приватный SSH ключ
+│   │   ├── {id}-key.pub       # Публичный ключ
+│   │   ├── ssh-config         # Готовый SSH конфиг
+│   │   ├── setup.sh / setup.bat / setup.ps1
+│   │   └── README.md
+│   ├── teams-credentials.json # Сводный JSON всех команд
+│   ├── xray-config.json       # Кладётся вручную перед деплоем
+│   └── admin-keys.txt         # Публичные ключи администраторов
 │
+├── CLAUDE.md                  # Инструкции для Claude Code
 ├── .gitignore
-├── provider.tf                # Provider configuration
-├── variables.tf               # Root variables
-├── outputs.tf                 # Root outputs
 └── README.md                  # Главная страница
 ```
 
@@ -88,8 +89,8 @@ terraform fmt -recursive
 **Resources:**
 ```hcl
 # Pattern: <type>_<name>
-resource "yandex_vpc_network" "this" { }
-resource "yandex_compute_instance" "edge" { }
+resource "cloudru_evolution_compute" "edge" { }
+resource "cloudru_evolution_subnet" "public" { }
 resource "local_file" "team_ssh_config" { }
 ```
 
@@ -97,28 +98,29 @@ resource "local_file" "team_ssh_config" { }
 ```hcl
 # Используйте snake_case
 variable "team_cores" { }
-variable "public_subnet_id" { }
+variable "public_subnet_name" { }
 ```
 
 **Modules:**
 ```hcl
-# Используйте kebab-case для имен модулей
-module "team-credentials" { }
-module "config-sync" { }
+# Используйте kebab-case для директорий модулей
+module "team_credentials" {
+  source = "../../modules/team-credentials"
+}
 ```
 
 #### Комментарии
 
 ```hcl
 # Хорошо: Объясняет "почему"
-# Создаем route table отдельно чтобы избежать циклической зависимости
-resource "yandex_vpc_route_table" "nat" {
+# Edge VM в единой подсети 10.0.1.0/24, NAT через iptables MASQUERADE
+resource "cloudru_evolution_compute" "edge" {
   # ...
 }
 
 # Плохо: Описывает "что" (очевидно из кода)
-# Создать route table
-resource "yandex_vpc_route_table" "nat" {
+# Создать edge VM
+resource "cloudru_evolution_compute" "edge" {
   # ...
 }
 ```
@@ -130,7 +132,7 @@ variable "example" {
   description = "Clear description of purpose"
   type        = string
   default     = "value"  # Если не требуется - не указывать default
-  
+
   validation {
     condition     = length(var.example) > 0
     error_message = "Example must not be empty."
@@ -148,11 +150,31 @@ output "example" {
 }
 ```
 
+### Ansible
+
+#### Naming conventions
+
+- Роли: snake_case (`common`, `docker`, `nat`)
+- Переменные: snake_case (`traefik_version`, `private_cidr`)
+- Шаблоны: `*.j2` (Jinja2)
+- Handlers: описательные имена (`restart traefik`, `reload systemd`)
+
+#### Структура роли
+
+```
+roles/role-name/
+├── tasks/main.yml       # Основные задачи
+├── templates/*.j2       # Jinja2 шаблоны
+├── handlers/main.yml    # Handlers
+├── defaults/main.yml    # Значения по умолчанию
+└── vars/main.yml        # Переменные роли
+```
+
 ---
 
 ## Разработка модулей
 
-### Структура модуля
+### Структура Terraform модуля
 
 Каждый модуль должен содержать:
 
@@ -161,74 +183,29 @@ module-name/
 ├── main.tf           # Основные ресурсы
 ├── variables.tf      # Входные переменные
 ├── outputs.tf        # Outputs
-├── versions.tf       # Provider versions (опционально)
-└── README.md         # Документация модуля (опционально)
+└── versions.tf       # Provider versions
 ```
 
 ### Принципы
 
-1. **Single Responsibility** - модуль должен решать одну задачу
-2. **Reusable** - модуль должен быть переиспользуемым
-3. **Well-documented** - clear variables и outputs
-4. **Tested** - проверен на работоспособность
+1. **Single Responsibility** -- модуль должен решать одну задачу
+2. **Reusable** -- модуль должен быть переиспользуемым
+3. **Well-documented** -- clear variables и outputs
+4. **Tested** -- проверен на работоспособность
 
-### Пример: Создание нового модуля
+### Разработка Ansible ролей
 
-Допустим, нужно создать модуль для monitoring.
+При создании новой Ansible роли:
 
-**1. Создать структуру:**
-```bash
-mkdir -p modules/monitoring
-cd modules/monitoring
-touch main.tf variables.tf outputs.tf versions.tf
-```
+1. Создать структуру:
+   ```bash
+   mkdir -p ansible/roles/my-role/{tasks,templates,handlers,defaults}
+   touch ansible/roles/my-role/tasks/main.yml
+   ```
 
-**2. Определить variables:**
-```hcl
-# variables.tf
-variable "name" {
-  description = "Base name for monitoring resources"
-  type        = string
-}
+2. Добавить роль в соответствующий playbook (`edge.yml` или `team-vms.yml`)
 
-variable "targets" {
-  description = "List of VMs to monitor"
-  type        = list(string)
-}
-```
-
-**3. Создать ресурсы:**
-```hcl
-# main.tf
-resource "yandex_monitoring_dashboard" "main" {
-  name = "${var.name}-dashboard"
-  # ...
-}
-```
-
-**4. Определить outputs:**
-```hcl
-# outputs.tf
-output "dashboard_url" {
-  description = "URL of monitoring dashboard"
-  value       = yandex_monitoring_dashboard.main.url
-}
-```
-
-**5. Документировать:**
-```hcl
-# Добавить в docs/modules.md описание модуля
-```
-
-**6. Использовать:**
-```hcl
-# environments/dev/main.tf
-module "monitoring" {
-  source  = "../../modules/monitoring"
-  name    = var.name
-  targets = [module.edge.edge_instance_id]
-}
-```
+3. Определить переменные в `group_vars/`
 
 ---
 
@@ -249,16 +226,22 @@ terraform validate
 # 3. Plan (без изменений)
 terraform plan
 
-# 4. Применить в test окружении
-terraform apply -auto-approve
+# 4. Применить
+terraform apply
 
-# 5. Проверить работоспособность
+# 5. Настроить через Ansible
+cd ../../ansible
+ansible-playbook playbooks/site.yml
+
+# 6. Проверить работоспособность
 # - SSH подключение
 # - HTTP/HTTPS routing
 # - Xray proxy
+# - NAT
 
-# 6. Cleanup
-terraform destroy -auto-approve
+# 7. Cleanup
+cd ../environments/dev
+terraform destroy
 ```
 
 ### Testing Checklist
@@ -266,6 +249,7 @@ terraform destroy -auto-approve
 - [ ] `terraform fmt -check` проходит
 - [ ] `terraform validate` проходит
 - [ ] `terraform plan` не показывает неожиданных изменений
+- [ ] Ansible playbooks выполняются без ошибок
 - [ ] SSH подключение работает
 - [ ] Интернет работает на team VM
 - [ ] TPROXY работает (AI API доступны)
@@ -280,19 +264,19 @@ terraform destroy -auto-approve
 
 ```
 1. Fork репозитория
-     ↓
+     |
 2. Создать feature branch
-     ↓
+     |
 3. Внести изменения
-     ↓
+     |
 4. Тестировать
-     ↓
+     |
 5. Commit с хорошим message
-     ↓
+     |
 6. Push и создать Pull Request
-     ↓
+     |
 7. Code review
-     ↓
+     |
 8. Merge
 ```
 
@@ -329,7 +313,7 @@ refactor/simplify-modules    # Рефакторинг
 ```
 feat(edge): add monitoring dashboard
 
-Добавлен Yandex Monitoring dashboard для edge VM.
+Добавлен monitoring dashboard для edge VM.
 Отображает CPU, RAM, network traffic.
 
 Closes #42
@@ -345,9 +329,7 @@ Fixes #56
 
 ---
 
-docs(quickstart): improve SSH setup instructions
-
-Добавлены более подробные инструкции для Variant B.
+refactor: migrate to Cloud.ru Evolution provider, add Ansible
 ```
 
 ### Pull Request
@@ -355,36 +337,10 @@ docs(quickstart): improve SSH setup instructions
 **Checklist:**
 - [ ] Код отформатирован (`terraform fmt`)
 - [ ] Тесты пройдены
+- [ ] Ansible playbooks проверены
 - [ ] Документация обновлена
 - [ ] CHANGELOG.md обновлен (для feature/fix)
 - [ ] PR description описывает изменения
-- [ ] Screenshots добавлены (если UI изменения)
-
-**Template:**
-```markdown
-## Description
-Краткое описание изменений.
-
-## Changes
-- Добавлено X
-- Изменено Y
-- Исправлено Z
-
-## Testing
-Как тестировать:
-1. terraform apply
-2. Проверить X
-3. Проверить Y
-
-## Screenshots
-(если применимо)
-
-## Checklist
-- [x] Код отформатирован
-- [x] Тесты пройдены
-- [x] Документация обновлена
-- [x] CHANGELOG.md обновлен
-```
 
 ---
 
@@ -392,33 +348,11 @@ docs(quickstart): improve SSH setup instructions
 
 ### Принципы
 
-1. **Single Source of Truth** - каждый факт описан в одном месте
-2. **Up-to-date** - документация обновляется вместе с кодом
-3. **Clear** - понятно для целевой аудитории
-4. **Actionable** - содержит практические примеры
-
-### Структура документа
-
-```markdown
-# Название
-
-> **Статус:** Актуально | Черновик | Устарело
-> **Последнее обновление:** YYYY-MM-DD
-> **Связанные документы:** [link1](link1.md), [link2](link2.md)
-
-## Обзор
-1-2 параграфа с кратким описанием.
-
-## Содержание
-- [Раздел 1](#раздел-1)
-- [Раздел 2](#раздел-2)
-
-## Раздел 1
-Подробное описание с примерами.
-
-## См. также
-- [Related doc](related.md)
-```
+1. **Single Source of Truth** -- каждый факт описан в одном месте
+2. **Up-to-date** -- документация обновляется вместе с кодом
+3. **Clear** -- понятно для целевой аудитории
+4. **Actionable** -- содержит практические примеры
+5. **На русском языке** -- вся документация пишется на русском
 
 ### Где документировать что
 
@@ -428,31 +362,9 @@ docs(quickstart): improve SSH setup instructions
 | Архитектура | [architecture.md](architecture.md) |
 | Администрирование | [admin-guide.md](admin-guide.md) |
 | Использование инфраструктуры | [user-guide.md](user-guide.md) |
-| Конфигурация Xray | [xray-configuration.md](xray-configuration.md) |
-| Решение проблем | [troubleshooting.md](troubleshooting.md) |
 | Описание модулей | [modules.md](modules.md) |
 | История изменений | [changelog.md](changelog.md) |
 | Для разработчиков | [development.md](development.md) |
-
-### Checklist при изменении кода
-
-- [ ] Обновлена документация (если применимо)
-- [ ] Обновлен CHANGELOG.md (для user-facing изменений)
-- [ ] Проверены ссылки (если менялась структура)
-- [ ] Обновлены примеры кода
-
-### Проверка документации
-
-```bash
-# Проверить ссылки (если установлен markdown-link-check)
-find docs -name "*.md" -exec markdown-link-check {} \;
-
-# Проверить орфографию
-# (использовать spell checker вашего редактора)
-
-# Проверить форматирование markdown
-markdownlint docs/
-```
 
 ---
 
@@ -461,15 +373,16 @@ markdownlint docs/
 ### Рекомендуемые
 
 - **Terraform** >= 1.0
-- **Yandex Cloud CLI** (`yc`)
+- **Ansible** (ansible-core >= 2.20)
 - **Git**
 - **Code editor** (VS Code, IntelliJ с Terraform plugin)
-- **jq** - для работы с JSON
-- **yq** - для работы с YAML
+- **jq** -- для работы с JSON
+- **yq** -- для работы с YAML
 
 ### VS Code Extensions
 
 - HashiCorp Terraform
+- Ansible (Red Hat)
 - markdownlint
 - GitLens
 - YAML
@@ -477,19 +390,21 @@ markdownlint docs/
 ### Полезные команды
 
 ```bash
-# Terraform
+# Terraform (из environments/dev/)
 terraform fmt -recursive          # Форматирование
 terraform validate                # Валидация
 terraform plan -out=tfplan        # Plan с сохранением
 terraform show tfplan             # Просмотр saved plan
 
+# Ansible (из ansible/)
+ansible-playbook playbooks/site.yml           # Полная настройка
+ansible-playbook playbooks/edge.yml           # Только edge
+ansible-playbook playbooks/team-vms.yml       # Только team VMs
+ansible-playbook playbooks/edge.yml --tags xray  # Только Xray
+
 # Git
 git log --oneline --graph         # История коммитов
 git diff HEAD~1                   # Diff с предыдущим commit
-
-# Yandex Cloud
-yc compute instance list          # Список VM
-yc vpc network list               # Список VPC
 ```
 
 ---
@@ -504,7 +419,7 @@ git checkout main
 git pull origin main
 
 # Создать release branch
-git checkout -b release/v2.1.0
+git checkout -b release/v3.0.0
 ```
 
 ### 2. Обновить документацию
@@ -522,7 +437,10 @@ terraform plan
 
 # Полный цикл в test окружении
 terraform apply
+cd ../../ansible
+ansible-playbook playbooks/site.yml
 # Тестировать функционал
+cd ../environments/dev
 terraform destroy
 ```
 
@@ -530,12 +448,12 @@ terraform destroy
 
 ```bash
 git add .
-git commit -m "chore: prepare release v2.1.0"
-git push origin release/v2.1.0
+git commit -m "chore: prepare release v3.0.0"
+git push origin release/v3.0.0
 
 # После merge в main
-git tag -a v2.1.0 -m "Release v2.1.0"
-git push origin v2.1.0
+git tag -a v3.0.0 -m "Release v3.0.0"
+git push origin v3.0.0
 ```
 
 ### 5. GitHub Release
@@ -553,8 +471,6 @@ git push origin v2.1.0
 ```bash
 # Если terraform apply был прерван
 terraform force-unlock <lock-id>
-
-# Или удалить state lock вручную (Yandex Object Storage)
 ```
 
 ### Changes not applying
@@ -575,13 +491,24 @@ terraform init -reconfigure
 terraform init -upgrade
 ```
 
+### Ansible не подключается
+
+```bash
+# Проверить inventory
+ansible-inventory -i inventory/hosts.yml --list
+
+# Проверить SSH-подключение
+ssh -i <key> jump@<edge-ip>
+
+# Запустить с verbose
+ansible-playbook playbooks/edge.yml -vvv
+```
+
 ---
 
 ## См. также
 
-- [modules.md](modules.md) - детальное описание модулей
-- [changelog.md](changelog.md) - история изменений
-- [architecture.md](architecture.md) - архитектура проекта
-- [Terraform Best Practices](https://www.terraform-best-practices.com/)
-- [Keep a Changelog](https://keepachangelog.com/ru/1.0.0/)
-- [Semantic Versioning](https://semver.org/lang/ru/)
+- [modules.md](modules.md) -- детальное описание модулей и ролей
+- [changelog.md](changelog.md) -- история изменений
+- [architecture.md](architecture.md) -- архитектура проекта
+- [CLAUDE.md](../CLAUDE.md) -- инструкции для Claude Code

@@ -32,35 +32,13 @@ variable "secrets_path" {
 }
 
 # SSH Keys - passed from parent configuration
-variable "team_jump_private_keys" {
-  description = "Map of team jump private keys (OpenSSH format)"
+variable "team_private_keys" {
+  description = "Map of team private keys (OpenSSH format)"
   type        = map(string)
   sensitive   = true
 }
 
-variable "team_jump_public_keys" {
-  description = "Map of team jump public keys (OpenSSH format)"
-  type        = map(string)
-}
-
-variable "team_vm_private_keys" {
-  description = "Map of team VM private keys (OpenSSH format)"
-  type        = map(string)
-  sensitive   = true
-}
-
-variable "team_vm_public_keys" {
-  description = "Map of team VM public keys (OpenSSH format)"
-  type        = map(string)
-}
-
-variable "team_github_private_keys" {
-  description = "Map of team GitHub deploy private keys (OpenSSH format)"
-  type        = map(string)
-  sensitive   = true
-}
-
-variable "team_github_public_keys" {
-  description = "Map of team GitHub deploy public keys (OpenSSH format)"
+variable "team_public_keys" {
+  description = "Map of team public keys (OpenSSH format)"
   type        = map(string)
 }

@@ -1,226 +1,149 @@
-# AI Talent Camp Infrastructure
+# AI South Hub 2026 — Infrastructure
 
-> Terraform-инфраструктура для AI Talent Camp
+> Terraform + Ansible инфраструктура для хакатона AI South Hub 2026 на Cloud.ru Evolution
 
 ## Что это
 
-Проект создает безопасную и управляемую инфраструктуру для проведения кэмпа с автоматическим развертыванием виртуальных машин для команд, проксированием AI API и централизованным управлением через Terraform.
+Проект создаёт управляемую инфраструктуру для проведения хакатона: виртуальные машины для команд, HTTPS reverse proxy, проксирование AI API.
 
-## Ключевые возможности
+**Ключевые возможности:**
 
-- **Edge/NAT сервер** - единственная точка входа с публичным IP
-- **Traefik** (Docker) - reverse proxy с TLS passthrough
-- **Xray** (systemd service) - прозрачное проксирование AI API через TPROXY
-- **Private Network** - изолированная сеть для команд
-- **Team VMs** - отдельные VM для каждой команды (4 vCPU, 8GB RAM, 65GB SSD)
-- **Автоматическое управление SSH ключами** - генерация и синхронизация credentials
+- **Edge/NAT сервер** — единственная точка входа с публичным IP и floating IP
+- **Traefik на edge** (Docker, `network_mode: host`) — HTTPS с автоматическим ACME/Let's Encrypt, маршрутизация по поддомену на VM команды
+- **team-traefik на team VM** (Docker) — HTTP-only, docker provider; команды деплоят сервисы через docker labels
+- **Xray** (systemd) — прозрачное проксирование AI API через TPROXY
+- **Team VMs** — отдельная VM для каждой команды (4 vCPU, 8GB RAM, 65GB SSD)
+- **Автоматические credentials** — SSH ключи и setup-скрипты генерируются Terraform
 
 ## Архитектура
 
 ### Для команд
 
-Простая схема для участников:
-
-```mermaid
-flowchart LR
-    Internet((Internet))
-    You[Вы / IDE]
-    VM[Ваша Team VM<br/>4 vCPU, 8GB RAM, 65GB SSD]
-    
-    You -->|SSH| VM
-    You -->|HTTPS| VM
-    VM -->|Интернет<br/>AI APIs| Internet
+```
+Вы / IDE  ──SSH──►  bastion.south.aitalenthub.ru  ──►  Ваша VM (10.0.1.x)
+          ──HTTPS─► {team_id}.south.aitalenthub.ru ──►  team-traefik ──► ваш контейнер
 ```
 
 **Что у вас есть:**
-- Выделенная виртуальная машина Ubuntu 22.04
-- SSH доступ через центральную точку входа bastion
-- Полный root доступ (через sudo)
-- Доменное имя для вашего приложения `teamXX.camp.aitalenthub.ru` (можно изменить, см. ниже)
-- Доступ в интернет и к AI API
+- Выделенная VM Ubuntu 22.04 (4 vCPU, 8GB RAM, 65GB SSD)
+- SSH доступ через bastion (один ключ `{team_id}-key`)
+- Домен `{team_id}.south.aitalenthub.ru` с HTTPS (Let's Encrypt)
+- Предустановлен Docker + Traefik — деплой через docker labels
+- Доступ в интернет и к AI API через Xray
 
 ### Для администраторов
 
-Детальная архитектура всей инфраструктуры см. в [docs/architecture.md](docs/architecture.md)
+Детальная архитектура — [docs/architecture.md](docs/architecture.md)
 
 ## Быстрый старт
 
 ### Для команд участников
 
-Вы получаете выделенную виртуальную машину в облаке с полным доступом.
+Вы получаете папку `team-{id}/` с SSH ключом и скриптами.
 
-**Что вам нужно сделать:**
+**Mac / Linux:**
+```bash
+cd ~/Downloads/team-{id}
+bash setup.sh
+ssh {team_id}
+```
 
-1. **Подключиться к VM** - см. [docs/quickstart.md](docs/quickstart.md)
-   - SSH подключение через терминал
-   - Подключение через VSCode/Cursor
-   - Используйте готовые SSH ключи из папки `team-XX/`
+**Windows (CMD):**
+Двойной клик на `setup.bat`, затем `ssh {team_id}` в любом терминале.
 
-2. **Настроить окружение** - см. [docs/user-guide.md](docs/user-guide.md)
-   - Установить Docker и Docker Compose
-   - Настроить Nginx как reverse proxy
-   - Получить SSL сертификаты
+**Windows (PowerShell):**
+Правой кнопкой → «Запустить с помощью PowerShell» на `setup.ps1`.
 
-3. **Развернуть приложение**
-   - Запустить ваше приложение
-   - Настроить доменное имя
-   - Настроить CI/CD для автоматического деплоя
+Подробнее — [docs/quickstart.md](docs/quickstart.md)
+
+### Для администраторов
+
+```bash
+# 1. Настроить Cloud.ru Evolution credentials
+cd environments/dev
+cp terraform.tfvars.example terraform.tfvars
+# Заполнить project_id, auth_key_id, auth_secret, jump_public_key, teams
+
+# 2. Задеплоить инфраструктуру
+terraform init
+terraform apply
+# Terraform сгенерирует secrets/team-{id}/ для каждой команды
+
+# 3. Создать secrets/admin-keys.txt (SSH публичные ключи администраторов)
+echo "ssh-ed25519 AAAA... admin@example.com" > ../../secrets/admin-keys.txt
+
+# 4. Настроить VM через Ansible
+cd ../../ansible
+ansible-playbook playbooks/edge.yml      # edge: NAT, Traefik, Xray
+ansible-playbook playbooks/team-vms.yml  # команды: маршрут, Docker, team-traefik
+```
 
 ## Работа с доменами
 
-Каждая команда получает поддомен: **`teamXX.camp.aitalenthub.ru`**
+Каждая команда получает поддомен: **`{team_id}.south.aitalenthub.ru`**
 
-Где `XX` - номер вашей команды (например, `team01`, `team02`, и т.д.)
+Домен настроен автоматически через Traefik на edge VM. SSL сертификат выдаётся Let's Encrypt через HTTP-01 challenge.
 
-Вы можете запросить изменение части `teamXX` на своё название, см. [user-guide.md](docs/user-guide.md#переименование-домена)
-
-Если у вас есть свой домен и вы хотите использовать его см. [user-guide.md](docs/user-guide.md#использование-собственного-домена)
-
-## Подключение через IDE
-
-Подробные инструкции см. в [docs/quickstart.md](docs/quickstart.md#подключение-через-vscodecursor)
-
-### Для администраторов
-
-Если вы развертываете инфраструктуру:
-
-1. Установите [Prerequisites](docs/admin-guide.md#prerequisites)
-2. Настройте [Yandex Cloud](docs/admin-guide.md#настройка-yandex-cloud)
-3. Следуйте [пошаговому руководству](docs/admin-guide.md#развертывание-инфраструктуры)
-
-**Быстрое развертывание:**
-
-```bash
-# Клонировать репозиторий
-git clone https://gitlab.com/aitalenthub-core/ai-talent-camp-2026-infra.git
-cd ai-talent-camp-2026-infra/environments/dev
-
-# Настроить переменные
-cp terraform.tfvars.example terraform.tfvars
-nano terraform.tfvars
-
-# Развернуть
-terraform init
-terraform apply
-```
-
-Подробнее см. [docs/admin-guide.md](docs/admin-guide.md)
-
-## Документация
-
-### Для пользователей (команды участников)
-
-| Документ | Описание |
-|----------|----------|
-| [quickstart.md](docs/quickstart.md) | Быстрый старт - подключение и первое приложение |
-| [user-guide.md](docs/user-guide.md) | Полное руководство пользователя |
-| [troubleshooting.md](docs/troubleshooting.md) | Решение типичных проблем |
-
-### Для администраторов
-
-| Документ | Описание |
-|----------|----------|
-| [admin-guide.md](docs/admin-guide.md) | Развертывание и управление инфраструктурой |
-| [xray-configuration.md](docs/xray-configuration.md) | Конфигурация Xray proxy |
-| [architecture.md](docs/architecture.md) | Детальная архитектура |
-| [modules.md](docs/modules.md) | Документация Terraform модулей |
-
-### Для разработчиков
-
-| Документ | Описание |
-|----------|----------|
-| [development.md](docs/development.md) | Стандарты разработки и contribution |
-| [changelog.md](docs/changelog.md) | История изменений |
-
-## Основные компоненты
-
-### Для команд
-
-**Team VM** - ваша виртуальная машина:
-- **Ресурсы:** 4 vCPU, 8GB RAM, 65GB SSD
-- **ОС:** Ubuntu 22.04 LTS
-- **Доступ:** SSH (через центральную точку входа)
-- **Права:** Полный sudo доступ
-- **Интернет:** Прямой доступ ко всем сервисам
-- **Домен:** `teamXX.camp.aitalenthub.ru`
-
-### Для администраторов
-
-Подробная информация об архитектуре, Edge VM и всех компонентах инфраструктуры доступна в [docs/architecture.md](docs/architecture.md) и [docs/admin-guide.md](docs/admin-guide.md)
+Деплой сервиса командой — через docker labels (подробнее [docs/user-guide.md](docs/user-guide.md#деплой-через-traefik)).
 
 ## Структура проекта
 
 ```
-ai-talent-camp-2026-infra/
-├── modules/              # Terraform модули
-│   ├── network/          # VPC и подсети
-│   ├── security/         # Security groups
-│   ├── routing/          # Route tables
+ai-south-hack-2026-infra/
+├── modules/
+│   ├── network/          # Подсеть 10.0.1.0/24
+│   ├── security/         # Security group для team VMs
 │   ├── edge/             # Edge/NAT VM
 │   ├── team_vm/          # VM для команд
-│   ├── team-credentials/ # Управление SSH ключами
-│   └── config-sync/      # Синхронизация конфигов
+│   └── team-credentials/ # SSH ключи + setup-скрипты
 │
 ├── environments/
-│   └── dev/              # Development environment
+│   └── dev/              # Точка входа Terraform
 │
-├── templates/            # Конфигурационные шаблоны
-│   ├── traefik/          # Traefik configs
-│   ├── xray/             # Xray template
-│   └── team/             # SSH configs
+├── ansible/
+│   ├── playbooks/        # edge.yml, team-vms.yml, sync-keys.yml
+│   └── roles/            # common, docker, nat, traefik, team-traefik, xray
+│
+├── templates/
+│   └── team/             # Шаблоны: ssh-config, setup.sh, setup.bat, setup.ps1, README.md
 │
 ├── docs/                 # Документация
-│   ├── quickstart.md
-│   ├── user-guide.md
-│   ├── admin-guide.md
-│   ├── architecture.md
-│   ├── xray-configuration.md
-│   ├── troubleshooting.md
-│   ├── modules.md
-│   ├── development.md
-│   └── changelog.md
 │
-├── secrets/              # Генерируемые ключи (gitignored)
-│   ├── team-01/
-│   ├── team-02/
-│   ├── xray-config.json
-│   └── traefik-dynamic.yml
-│
-└── README.md             # Этот файл
+└── secrets/              # Генерируемые ключи и конфиги (gitignored)
+    ├── team-{id}/        # {id}-key, ssh-config, setup.sh, setup.bat, setup.ps1, README.md
+    ├── admin-keys.txt    # Публичные ключи администраторов (создать вручную!)
+    └── teams-credentials.json
 ```
 
 ## Ресурсы
 
-### По умолчанию
-
-| Компонент | vCPU | RAM | Disk | Количество |
-|-----------|------|-----|------|------------|
+| Компонент | vCPU | RAM | Disk | Кол-во |
+|-----------|------|-----|------|--------|
 | Edge VM | 2 | 4GB | 20GB SSD | 1 |
 | Team VM | 4 | 8GB | 65GB SSD | По числу команд |
 
+## Документация
+
+### Для команд
+
+| Документ | Описание |
+|----------|----------|
+| [quickstart.md](docs/quickstart.md) | Подключение к VM и первое приложение |
+| [user-guide.md](docs/user-guide.md) | Полное руководство: Docker, Traefik, домены, AI API |
+
+### Для администраторов
+
+| Документ | Описание |
+|----------|----------|
+| [admin-guide.md](docs/admin-guide.md) | Развёртывание и управление инфраструктурой |
+| [architecture.md](docs/architecture.md) | Детальная архитектура |
+| [modules.md](docs/modules.md) | Документация Terraform модулей |
+
 ## Технологии
 
-- **Infrastructure as Code:** Terraform
-- **Cloud Provider:** Yandex Cloud
+- **IaC:** Terraform (Cloud.ru Evolution provider v1.6.0)
+- **Cloud:** Cloud.ru Evolution
 - **OS:** Ubuntu 22.04 LTS
-- **Reverse Proxy:** Traefik v3.0 (Docker)
-- **Transparent Proxy:** Xray (systemd service)
-- **Automation:** cloud-init
-
-## Безопасность
-
-- Network isolation (private subnet)
-- SSH key-based authentication
-- TLS passthrough (end-to-end encryption)
-- Security groups с минимальными правами
-- Audit logs (SSH, HTTP, proxy traffic)
-
-## Поддержка
-
-### Документация
-
-См. раздел [Документация](#документация) выше для навигации по всем руководствам.
-
-### Troubleshooting
-
-При возникновении проблем проверьте [docs/troubleshooting.md](docs/troubleshooting.md)
+- **Reverse Proxy:** Traefik v3 (Docker)
+- **Transparent Proxy:** Xray (systemd)
+- **Automation:** Ansible

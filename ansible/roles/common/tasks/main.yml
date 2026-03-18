@@ -7,10 +7,214 @@
 - name: Install common packages
   apt:
     name:
+      # Базовые утилиты
       - curl
       - wget
-      - htop
-      - jq
       - unzip
+      - jq
+      - tree
+      - ncdu
+      - bat
+      - ripgrep
+      - fd-find
+      # Шелл
+      - bash
+      - bash-completion
+      - tmux
+      # Редакторы
+      - vim
+      - nano
+      # Мониторинг
+      - htop
+      - btop
+      - neofetch
+      # Сеть и диагностика
       - net-tools
+      - netcat-openbsd
+      - dnsutils
+      - tcpdump
+      - traceroute
+      - nmap
+      - iperf3
+      # Разработка
+      - git
+      - make
+      - build-essential
+      # Зависимости playwright
+      - libglib2.0-0
+      - libnss3
+      - libnspr4
+      - libatk1.0-0
+      - libatk-bridge2.0-0
+      - libcups2
+      - libdrm2
+      - libxkbcommon0
+      - libxcomposite1
+      - libxdamage1
+      - libxfixes3
+      - libxrandr2
+      - libgbm1
+      - libasound2
     state: present
+
+# --- Bash как дефолтный шелл ---
+
+- name: Set bash as default shell for ansible_user
+  user:
+    name: "{{ ansible_user }}"
+    shell: /bin/bash
+
+- name: Deploy .bashrc with nvm, aliases, and PATH
+  copy:
+    dest: "/home/{{ ansible_user }}/.bashrc"
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: "0644"
+    content: |
+      # .bashrc
+
+      # Не выполнять для не-интерактивных шеллов
+      case $- in
+          *i*) ;;
+            *) return;;
+      esac
+
+      # История
+      HISTCONTROL=ignoreboth
+      HISTSIZE=10000
+      HISTFILESIZE=20000
+      shopt -s histappend
+
+      # Обновлять LINES/COLUMNS при ресайзе окна
+      shopt -s checkwinsize
+
+      # Цветной prompt с именем хоста
+      PS1='\[\033[01;32m\]\u@\h\[\033[00m\]:\[\033[01;34m\]\w\[\033[00m\]\$ '
+
+      # Цветной ls
+      alias ls='ls --color=auto'
+      alias ll='ls -alF'
+      alias la='ls -A'
+      alias l='ls -CF'
+      alias grep='grep --color=auto'
+
+      # Удобные алиасы
+      alias ..='cd ..'
+      alias ...='cd ../..'
+      alias df='df -h'
+      alias du='du -h'
+      alias free='free -h'
+
+      # bat вместо cat (если доступен)
+      if command -v batcat &>/dev/null; then
+        alias bat='batcat'
+        alias cat='batcat --style=plain'
+      fi
+
+      # fd вместо find (если доступен)
+      if command -v fdfind &>/dev/null; then
+        alias fd='fdfind'
+      fi
+
+      # Bash completion
+      if [ -f /etc/bash_completion ] && ! shopt -oq posix; then
+        . /etc/bash_completion
+      fi
+
+      # nvm
+      export NVM_DIR=/opt/nvm
+      [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+      [ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"
+
+      # uv + claude (устанавливаются в ~/.local/bin)
+      export PATH="$HOME/.local/bin:/usr/local/bin:$PATH"
+
+
+- name: Ensure .bash_profile sources .bashrc (login shells)
+  copy:
+    dest: "/home/{{ ansible_user }}/.bash_profile"
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: "0644"
+    content: |
+      # Загружаем .bashrc из login shell (SSH)
+      [ -f ~/.bashrc ] && . ~/.bashrc
+
+# --- nvm + Node.js ---
+
+- name: Create /opt/nvm directory
+  file:
+    path: /opt/nvm
+    state: directory
+    mode: "0755"
+
+- name: Install nvm system-wide
+  shell: >
+    curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh |
+    NVM_DIR=/opt/nvm PROFILE=/dev/null bash
+  args:
+    creates: /opt/nvm/nvm.sh
+
+- name: Make /opt/nvm readable by all users
+  file:
+    path: /opt/nvm
+    mode: "0755"
+    recurse: true
+
+- name: Configure nvm for all users via profile.d
+  copy:
+    dest: /etc/profile.d/nvm.sh
+    content: |
+      export NVM_DIR=/opt/nvm
+      [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+      [ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"
+    mode: "0644"
+
+- name: Install Node.js LTS via nvm
+  shell: |
+    source /opt/nvm/nvm.sh
+    nvm install --lts
+    nvm alias default lts/*
+  args:
+    executable: /bin/bash
+    creates: /opt/nvm/alias/default
+
+- name: Install global npm packages
+  shell: |
+    source /opt/nvm/nvm.sh
+    npm install -g {{ item }}
+  args:
+    executable: /bin/bash
+  loop:
+    - playwright
+  changed_when: false
+  when: inventory_hostname in groups['team_vms']
+
+# --- Claude Code (нативная установка с автообновлением) ---
+
+- name: Install Claude Code via official script
+  shell: curl -fsSL https://claude.ai/install.sh | bash
+  args:
+    creates: "/home/{{ ansible_user }}/.local/bin/claude"
+  become: true
+  become_user: "{{ ansible_user }}"
+  when: inventory_hostname in groups['team_vms']
+
+- name: Install Playwright browsers with system deps
+  shell: |
+    source /opt/nvm/nvm.sh
+    npx playwright install --with-deps chromium
+  args:
+    executable: /bin/bash
+    creates: /root/.cache/ms-playwright
+  when: inventory_hostname in groups['team_vms']
+
+
+# --- uv (Python package manager) ---
+
+- name: Install uv system-wide
+  shell: curl -LsSf https://astral.sh/uv/install.sh | sh
+  args:
+    creates: /usr/local/bin/uv
+  environment:
+    UV_INSTALL_DIR: /usr/local/bin

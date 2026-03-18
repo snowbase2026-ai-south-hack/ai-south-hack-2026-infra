@@ -1,4 +1,10 @@
 ---
+- name: Create Xray log directory
+  file:
+    path: /var/log/xray
+    state: directory
+    mode: "0755"
+
 - name: Download Xray
   get_url:
     url: "https://github.com/XTLS/Xray-core/releases/download/v{{ xray_version }}/Xray-linux-64.zip"
@@ -16,6 +22,28 @@
     src: /tmp/xray.zip
     dest: /usr/local/share/xray
     remote_src: true
+  notify: restart xray
+
+- name: Install libcap2-bin for setcap
+  apt:
+    name: libcap2-bin
+    state: present
+
+- name: Set CAP_NET_ADMIN for TPROXY
+  command: setcap cap_net_admin+ep /usr/local/share/xray/xray
+  changed_when: true
+
+- name: Download geosite.dat
+  get_url:
+    url: "https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geosite.dat"
+    dest: /usr/local/share/xray/geosite.dat
+    mode: "0644"
+
+- name: Download geoip.dat
+  get_url:
+    url: "https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geoip.dat"
+    dest: /usr/local/share/xray/geoip.dat
+    mode: "0644"
 
 - name: Create Xray config directory
   file:
@@ -23,11 +51,11 @@
     state: directory
     mode: "0755"
 
-- name: Deploy Xray config
-  template:
-    src: config.json.j2
+- name: Deploy Xray config (from secrets/)
+  copy:
+    src: "{{ playbook_dir }}/../../secrets/xray-config.json"
     dest: /etc/xray/config.json
-    mode: "0644"
+    mode: "0600"
   notify: restart xray
 
 - name: Deploy Xray systemd service
@@ -41,6 +69,8 @@
       ExecStart=/usr/local/share/xray/xray run -config /etc/xray/config.json
       Restart=on-failure
       RestartSec=3
+      # TPROXY requires NET_ADMIN
+      AmbientCapabilities=CAP_NET_ADMIN
 
       [Install]
       WantedBy=multi-user.target

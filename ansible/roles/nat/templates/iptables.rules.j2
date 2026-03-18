@@ -1,0 +1,56 @@
+{% if xray_tproxy_enabled | default(false) %}
+*mangle
+:PREROUTING ACCEPT [0:0]
+
+# === TPROXY (transparent proxy via Xray) ===
+# Don't intercept traffic from edge itself
+-A PREROUTING -s {{ edge_private_ip }} -j RETURN
+# Don't intercept intra-subnet traffic (team↔team directly without Xray)
+-A PREROUTING -s {{ subnet_cidr }} -d {{ subnet_cidr }} -j RETURN
+# Don't proxy traffic to VLESS server (avoid loop)
+{% if vless_server_ip is defined and vless_server_ip != "" %}
+-A PREROUTING -d {{ vless_server_ip }} -j RETURN
+{% endif %}
+# TCP traffic from team VMs → Xray TPROXY
+-A PREROUTING -s {{ subnet_cidr }} -p tcp -j TPROXY --on-port {{ xray_tproxy_port }} --tproxy-mark 0x1/0x1
+# DNS → Xray DNS handler
+-A PREROUTING -s {{ subnet_cidr }} -p udp --dport 53 -j TPROXY --on-port 5353 --tproxy-mark 0x1/0x1
+
+COMMIT
+{% endif %}
+
+*nat
+:PREROUTING ACCEPT [0:0]
+:POSTROUTING ACCEPT [0:0]
+:OUTPUT ACCEPT [0:0]
+
+# NAT MASQUERADE for subnet traffic
+-A POSTROUTING -s {{ subnet_cidr }} -j MASQUERADE
+
+# Hairpin NAT: team VMs accessing edge public IP from inside
+{% if edge_public_ip is defined %}
+-A PREROUTING -s {{ subnet_cidr }} -d {{ edge_public_ip }} -j DNAT --to-destination {{ edge_private_ip }}
+-A POSTROUTING -s {{ subnet_cidr }} -d {{ edge_private_ip }} -j MASQUERADE
+{% endif %}
+
+COMMIT
+
+*filter
+:INPUT DROP [0:0]
+:FORWARD DROP [0:0]
+:OUTPUT ACCEPT [0:0]
+
+# === INPUT (replaces SG on edge) ===
+-A INPUT -i lo -j ACCEPT
+-A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
+-A INPUT -p tcp --dport 22 -j ACCEPT
+-A INPUT -p tcp --dport 80 -j ACCEPT
+-A INPUT -p tcp --dport 443 -j ACCEPT
+-A INPUT -s {{ subnet_cidr }} -j ACCEPT
+-A INPUT -p icmp -j ACCEPT
+
+# === FORWARD (NAT routing) ===
+-A FORWARD -s {{ subnet_cidr }} -j ACCEPT
+-A FORWARD -m state --state ESTABLISHED,RELATED -j ACCEPT
+
+COMMIT

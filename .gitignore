@@ -23,6 +23,10 @@ override.tf.json
 secrets/
 !secrets/.gitkeep
 
+# Generated Ansible inventory (produced by Terraform)
+ansible/inventory/hosts.yml
+ansible/inventory/group_vars/
+
 # SSH keys
 *.pem
 *_key
@@ -41,3 +45,4 @@ secrets/
 # OS
 .DS_Store
 Thumbs.db
+.superpowers/

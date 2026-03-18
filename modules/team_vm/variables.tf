@@ -29,11 +29,10 @@ variable "availability_zone_name" {
   default     = "ru.AZ-1"
 }
 
-variable "private_subnet_name" {
-  description = "Name of the private subnet"
+variable "subnet_name" {
+  description = "Name of the subnet"
   type        = string
 }
-
 
 variable "security_group_id" {
   description = "ID of the security group for team VMs"
@@ -43,4 +42,11 @@ variable "security_group_id" {
 variable "team_public_keys" {
   description = "SSH public key per team, keyed by team ID"
   type        = map(string)
+}
+
+variable "password" {
+  description = "Password for serial console access on team VMs"
+  type        = string
+  sensitive   = true
+  default     = ""
 }

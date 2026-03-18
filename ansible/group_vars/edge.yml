@@ -1,4 +1,7 @@
 ---
 traefik_version: "v3.3"
+acme_email: "admin@aitalenthub.ru"
 xray_version: "25.1.30"
+xray_tproxy_enabled: true
 xray_tproxy_port: 12345
+vless_server_ip: "95.85.233.146"  # match3.sysnx.net

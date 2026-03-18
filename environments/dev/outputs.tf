@@ -2,14 +2,9 @@
 # Network Outputs
 # =============================================================================
 
-output "public_subnet_id" {
-  description = "ID of the public subnet"
-  value       = module.network.public_subnet_id
-}
-
-output "private_subnet_id" {
-  description = "ID of the private subnet"
-  value       = module.network.private_subnet_id
+output "subnet_id" {
+  description = "ID of the subnet"
+  value       = module.network.subnet_id
 }
 
 # =============================================================================

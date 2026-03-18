@@ -1,79 +1,31 @@
-# =============================================================================
-# Edge Security Group
-# =============================================================================
-
+# Placeholder SG for edge — not enforced (interface_security_enabled=false),
+# but Cloud.ru requires at least one SG assigned to an interface
 resource "cloudru_evolution_security_group" "edge" {
   name        = "${var.name}-edge-sg"
-  description = "Security group for edge/NAT server"
+  description = "Permissive SG for edge VM (firewall via iptables)"
 
   availability_zone {
     id = var.availability_zone_id
   }
 
-  # SSH access from anywhere
-  rules {
-    direction        = "ingress"
-    ether_type       = "IPv4"
-    ip_protocol      = "tcp"
-    port_range       = "22:22"
-    remote_ip_prefix = "0.0.0.0/0"
-    description      = "SSH access"
-  }
-
-  # HTTP access from anywhere
-  rules {
-    direction        = "ingress"
-    ether_type       = "IPv4"
-    ip_protocol      = "tcp"
-    port_range       = "80:80"
-    remote_ip_prefix = "0.0.0.0/0"
-    description      = "HTTP access"
-  }
-
-  # HTTPS access from anywhere
-  rules {
-    direction        = "ingress"
-    ether_type       = "IPv4"
-    ip_protocol      = "tcp"
-    port_range       = "443:443"
-    remote_ip_prefix = "0.0.0.0/0"
-    description      = "HTTPS access"
-  }
-
-  # Allow all traffic from private subnet (for NAT)
   rules {
     direction        = "ingress"
     ether_type       = "IPv4"
     ip_protocol      = "any"
     port_range       = "any"
-    remote_ip_prefix = var.private_cidr
-    description      = "All traffic from private subnet"
-  }
-
-  # ICMP for diagnostics
-  rules {
-    direction        = "ingress"
-    ether_type       = "IPv4"
-    ip_protocol      = "icmp"
-    port_range       = "any"
     remote_ip_prefix = "0.0.0.0/0"
-    description      = "ICMP ping"
+    description      = "Allow all inbound (iptables handles filtering)"
   }
 
-  # Allow all outbound traffic
   rules {
     direction        = "egress"
     ether_type       = "IPv4"
     ip_protocol      = "any"
     port_range       = "any"
     remote_ip_prefix = "0.0.0.0/0"
-    description      = "Allow all outbound traffic"
+    description      = "Allow all outbound"
   }
 }
-
-# =============================================================================
-# Team VM Security Group
-# =============================================================================
 
 resource "cloudru_evolution_security_group" "team" {
   name        = "${var.name}-team-sg"
@@ -83,57 +35,47 @@ resource "cloudru_evolution_security_group" "team" {
     id = var.availability_zone_id
   }
 
-  # SSH access only from edge (public subnet)
+  # SSH — only from edge
   rules {
     direction        = "ingress"
     ether_type       = "IPv4"
     ip_protocol      = "tcp"
     port_range       = "22:22"
-    remote_ip_prefix = var.public_cidr
+    remote_ip_prefix = "${var.edge_private_ip}/32"
     description      = "SSH from edge"
   }
 
-  # HTTP access only from edge (for Traefik proxy)
+  # HTTP — only from edge (Traefik proxy)
   rules {
     direction        = "ingress"
     ether_type       = "IPv4"
     ip_protocol      = "tcp"
     port_range       = "80:80"
-    remote_ip_prefix = var.public_cidr
+    remote_ip_prefix = "${var.edge_private_ip}/32"
     description      = "HTTP from edge"
   }
 
-  # HTTPS access only from edge (for Traefik proxy)
+  # HTTPS — only from edge (Traefik proxy)
   rules {
     direction        = "ingress"
     ether_type       = "IPv4"
     ip_protocol      = "tcp"
     port_range       = "443:443"
-    remote_ip_prefix = var.public_cidr
+    remote_ip_prefix = "${var.edge_private_ip}/32"
     description      = "HTTPS from edge"
   }
 
-  # Allow traffic between team VMs (inter-team via edge)
+  # Inter-team: all protocols within subnet (including ICMP)
   rules {
     direction        = "ingress"
     ether_type       = "IPv4"
     ip_protocol      = "any"
     port_range       = "any"
-    remote_ip_prefix = var.private_cidr
-    description      = "Inter-team communication"
+    remote_ip_prefix = var.subnet_cidr
+    description      = "All traffic within subnet"
   }
 
-  # ICMP for diagnostics from edge
-  rules {
-    direction        = "ingress"
-    ether_type       = "IPv4"
-    ip_protocol      = "icmp"
-    port_range       = "any"
-    remote_ip_prefix = var.public_cidr
-    description      = "ICMP from edge"
-  }
-
-  # Allow all outbound traffic (through NAT)
+  # Egress — unrestricted
   rules {
     direction        = "egress"
     ether_type       = "IPv4"

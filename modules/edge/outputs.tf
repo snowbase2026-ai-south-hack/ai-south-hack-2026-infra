@@ -9,8 +9,8 @@ output "public_ip" {
 }
 
 output "private_ip" {
-  description = "Static private IP on the internal interface"
-  value       = var.private_ip
+  description = "Static private IP on the network interface"
+  value       = var.ip_address
 }
 
 output "fip_id" {

@@ -1,6 +1,6 @@
 # История изменений
 
-> **Последнее обновление:** 2026-01-29
+> **Последнее обновление:** 2026-03-17
 
 ## Формат
 
@@ -13,6 +13,52 @@ Changelog следует принципам [Keep a Changelog](https://keepachan
 - **Removed** - удаленные функции
 - **Fixed** - исправленные баги
 - **Security** - исправления безопасности
+
+---
+
+## [3.0.0] - 2026-03-17
+
+### Changed
+- **Миграция на Cloud.ru Evolution provider** (`cloud.ru/cloudru/cloud` v1.6.0)
+  - Вместо Yandex Cloud provider
+  - Авторизация через `project_id`, `auth_key_id`, `auth_secret`
+  - Нет VPC ресурса -- подсети как top-level ресурсы
+  - Нет route table ресурса -- статические маршруты через Ansible
+  - Security group rules inline с CIDR-based источниками
+
+- **Добавлен Ansible для постнастройки серверов**
+  - Роли: common, docker, nat, traefik, xray
+  - Playbooks: edge.yml, team-vms.yml, site.yml
+  - Inventory генерируется Terraform автоматически
+  - ansible.cfg для ansible-core 2.20+
+
+- **Изменена структура teams map**
+  - Ключи теперь произвольные имена (не только числовые ID)
+  - Добавлено поле `ip` для явного указания статического IP
+  - Пример: `"dashboard" = { user = "dashboard", ip = "10.0.2.100" }`
+
+- **Обновлены CIDR по умолчанию**
+  - Public: `10.0.1.0/24` (было `192.168.1.0/24`)
+  - Private: `10.0.2.0/24` (было `10.20.0.0/24`)
+
+- **Домен по умолчанию: `south.aitalenthub.ru`**
+
+- **VM и FIP ресурсы переименованы с префиксом `south-*`**
+
+- **Flavor lookup**: regex `^gen-` (было `^standard`)
+
+- **Public subnet**: добавлен `routed_network = true`
+
+### Removed
+- **Модуль `routing`** -- в Cloud.ru Evolution нет ресурса route table
+- **Модуль `config-sync`** -- заменен на Ansible
+- **Cloud-init шаблоны** -- заменены на Ansible роли
+- **Зависимость от Yandex Cloud CLI** (`yc`)
+
+### Added
+- **CLAUDE.md** с инструкциями для Claude Code
+- **Ansible infrastructure** (`ansible/` директория)
+- **Поддержка routed_network** на публичной подсети
 
 ---
 
