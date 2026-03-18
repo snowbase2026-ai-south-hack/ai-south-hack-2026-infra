@@ -24,9 +24,17 @@
 
     - name: Read admin public keys
       set_fact:
-        admin_keys: "{{ lookup('file', playbook_dir + '/../../secrets/admin-keys.txt').splitlines() | select('match', '^ssh-') | list }}"
+        admin_keys: "{{ lookup('file', playbook_dir + '/../../secrets/admin-keys.txt').splitlines()
+          | reject('match', '^\\s*#')
+          | reject('match', '^\\s*$')
+          | list }}"
       delegate_to: localhost
       become: false
+
+    - name: Assert at least one admin key was loaded
+      assert:
+        that: admin_keys | length > 0
+        fail_msg: "secrets/admin-keys.txt contains no valid public keys. Add real admin public keys before running."
 
     - name: Add team keys with port-forward restrictions to jump user
       authorized_key:
@@ -58,9 +66,17 @@
 
     - name: Read admin public keys
       set_fact:
-        admin_keys: "{{ lookup('file', playbook_dir + '/../../secrets/admin-keys.txt').splitlines() | select('match', '^ssh-') | list }}"
+        admin_keys: "{{ lookup('file', playbook_dir + '/../../secrets/admin-keys.txt').splitlines()
+          | reject('match', '^\\s*#')
+          | reject('match', '^\\s*$')
+          | list }}"
       delegate_to: localhost
       become: false
+
+    - name: Assert at least one admin key was loaded
+      assert:
+        that: admin_keys | length > 0
+        fail_msg: "secrets/admin-keys.txt contains no valid public keys. Add real admin public keys before running."
 
     - name: Ensure team key is present (idempotent)
       # team_id — переменная из inventory/hosts.yml (например "dashboard"), используется для пути к ключу
