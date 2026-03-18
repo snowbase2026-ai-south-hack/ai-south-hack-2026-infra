@@ -5,7 +5,7 @@
 
 ## Контекст
 
-Инфраструктура AI Talent Camp Hackathon. Команды — участники с разным уровнем технических знаний. Нужно максимально упростить подключение (один ключ вместо двух) и сделать обновление ключей изолированным от остальных настроек VM.
+Инфраструктура AI South Hackathon. Команды — участники с разным уровнем технических знаний. Нужно максимально упростить подключение (один ключ вместо двух) и сделать обновление ключей изолированным от остальных настроек VM.
 
 ## Проблемы текущей реализации
 
@@ -72,7 +72,7 @@ secrets/
 Host bastion
   HostName bastion.{domain}
   User {jump_user}
-  IdentityFile ~/.ssh/ai-camp/{team_user}-key
+  IdentityFile ~/.ssh/ai-south-hack/{team_user}-key
   IdentitiesOnly yes
   StrictHostKeyChecking no
   UserKnownHostsFile /dev/null
@@ -81,13 +81,13 @@ Host {team_user}
   HostName {team_private_ip}
   User {team_user}
   ProxyJump bastion
-  IdentityFile ~/.ssh/ai-camp/{team_user}-key
+  IdentityFile ~/.ssh/ai-south-hack/{team_user}-key
   IdentitiesOnly yes
   StrictHostKeyChecking no
   UserKnownHostsFile /dev/null
 ```
 
-Участник получает папку с одним ключом. Инструкция: скопировать в `~/.ssh/ai-camp/`, сделать `chmod 600`, подключиться: `ssh {user}`.
+Участник получает папку с одним ключом. Инструкция: скопировать в `~/.ssh/ai-south-hack/`, сделать `chmod 600`, подключиться: `ssh {user}`.
 
 ### Ansible: `sync-keys.yml`
 
@@ -130,6 +130,51 @@ Admin-ключи добавляются на:
 - **Все team VMs**: team user — прямой доступ через ProxyJump.
 
 Для добавления нового админа: дописать ключ в файл → запустить `sync-keys.yml`.
+
+### Доставка credentials участникам
+
+Участник получает ZIP-архив (через Telegram или ссылку на диск). Внутри архива:
+
+```
+team-{id}.zip
+  {user}-key          ← приватный ключ
+  {user}-key.pub      ← публичный ключ
+  ssh-config          ← SSH-конфиг
+  setup.sh            ← скрипт для Mac/Linux
+  setup.ps1           ← скрипт для Windows
+  README.md           ← инструкции для всех OS
+```
+
+**setup.sh (Mac/Linux):**
+1. Создаёт `~/.ssh/ai-south-hack/`
+2. Копирует `{user}-key`, `{user}-key.pub`, `ssh-config`
+3. Делает `chmod 600 ~/.ssh/ai-south-hack/{user}-key`
+4. Тестирует соединение: `ssh -F ~/.ssh/ai-south-hack/ssh-config -o ConnectTimeout=5 {user} echo OK`
+5. Печатает результат: `✓ Готово! Подключайся: ssh -F ~/.ssh/ai-south-hack/ssh-config {user}` или сообщение об ошибке
+
+**setup.ps1 (Windows):**
+1. Создаёт `$HOME\.ssh\ai-south-hack\`
+2. Копирует файлы туда
+3. Устанавливает права через `icacls` (только текущий пользователь)
+4. Тестирует соединение аналогично
+5. Печатает результат
+
+**README.md** содержит три секции:
+- **Mac/Linux:** `bash setup.sh` в терминале рядом с архивом
+- **Windows:** правый клик на `setup.ps1` → «Запустить в PowerShell»; если блокируется — `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`
+- **Ручная установка (запасной вариант):** пошаговые команды для каждой OS без скрипта
+
+Скрипты генерируются Terraform как `local_file` в модуле `team-credentials` через шаблоны в `templates/team/`.
+
+**Новые шаблоны:**
+- `templates/team/setup.sh.tpl`
+- `templates/team/setup.ps1.tpl`
+- `templates/team/README.md.tpl`
+
+**Новые local_file ресурсы в `modules/team-credentials/main.tf`:**
+- `local_file.team_setup_sh`
+- `local_file.team_setup_ps1`
+- `local_file.team_readme`
 
 ## Миграция (порядок важен)
 
@@ -198,7 +243,10 @@ Admin-ключи добавляются на:
 | `modules/team-credentials/main.tf` | убрать jump/github local_file ресурсы |
 | `modules/team-credentials/variables.tf` | убрать jump/github переменные |
 | `modules/team-credentials/main.tf` | обновить teams_credentials.json (убрать jump_key, github_key из files{}) |
-| `templates/team/ssh-config.tpl` | заменить `-jump-key` на `-key` в строке IdentityFile bastion-хоста; VM-хост уже использует `-key` |
+| `templates/team/ssh-config.tpl` | заменить `ai-camp` → `ai-south-hack` и `-jump-key` → `-key` в IdentityFile bastion-хоста |
+| `templates/team/setup.sh.tpl` | создать |
+| `templates/team/setup.ps1.tpl` | создать |
+| `templates/team/README.md.tpl` | создать |
 | `ansible/playbooks/sync-jump-keys.yml` | заменить на sync-keys.yml |
 | `ansible/playbooks/edge.yml` | импорт sync-keys.yml вместо sync-jump-keys.yml |
 | `ansible/playbooks/team-vms.yml` | импорт sync-keys.yml вместо sync-jump-keys.yml |
