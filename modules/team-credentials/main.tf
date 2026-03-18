@@ -34,7 +34,7 @@ moved {
 resource "local_file" "team_private_key" {
   for_each = var.teams
 
-  filename        = "${path.module}/${var.secrets_path}/team-${each.key}/${each.value.user}-key"
+  filename        = "${path.module}/${var.secrets_path}/team-${each.key}/${each.key}-key"
   content         = var.team_private_keys[each.key]
   file_permission = "0600"
 }
@@ -42,7 +42,7 @@ resource "local_file" "team_private_key" {
 resource "local_file" "team_public_key" {
   for_each = var.teams
 
-  filename = "${path.module}/${var.secrets_path}/team-${each.key}/${each.value.user}-key.pub"
+  filename = "${path.module}/${var.secrets_path}/team-${each.key}/${each.key}-key.pub"
   content  = var.team_public_keys[each.key]
 }
 
@@ -66,6 +66,7 @@ resource "local_file" "team_ssh_config" {
 
   filename = "${path.module}/${var.secrets_path}/team-${each.key}/ssh-config"
   content = templatefile("${path.module}/../../templates/team/ssh-config.tpl", {
+    team_id         = each.key
     team_user       = each.value.user
     domain          = var.domain
     jump_user       = var.jump_user
@@ -84,6 +85,7 @@ resource "local_file" "team_setup_sh" {
 
   filename = "${path.module}/${var.secrets_path}/team-${each.key}/setup.sh"
   content = templatefile("${path.module}/../../templates/team/setup.sh.tpl", {
+    team_id   = each.key
     team_user = each.value.user
   })
   file_permission = "0755"
@@ -95,6 +97,7 @@ resource "local_file" "team_setup_ps1" {
   filename        = "${path.module}/${var.secrets_path}/team-${each.key}/setup.ps1"
   file_permission = "0644"
   content = templatefile("${path.module}/../../templates/team/setup.ps1.tpl", {
+    team_id   = each.key
     team_user = each.value.user
   })
 }
@@ -105,6 +108,7 @@ resource "local_file" "team_readme" {
   filename        = "${path.module}/${var.secrets_path}/team-${each.key}/README.md"
   file_permission = "0644"
   content = templatefile("${path.module}/../../templates/team/README.md.tpl", {
+    team_id   = each.key
     team_user = each.value.user
     domain    = var.domain
   })
@@ -128,10 +132,10 @@ resource "local_file" "teams_credentials_json" {
         user        = team_config.user
         private_ip  = team_config.private_ip
         domain      = "${team_config.user}.${var.domain}"
-        ssh_command = "ssh -F ~/.ssh/ai-south-hack/ssh-config ${team_config.user}"
+        ssh_command = "ssh ${team_id}"
         folder      = "secrets/team-${team_id}/"
         files = {
-          key        = "${team_config.user}-key"
+          key        = "${team_id}-key"
           ssh_config = "ssh-config"
           setup_sh   = "setup.sh"
           setup_ps1  = "setup.ps1"

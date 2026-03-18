@@ -1,11 +1,11 @@
 # =============================================================================
-# AI South Hack — Setup SSH access for ${team_user}
+# AI South Hack — Setup SSH access for ${team_id}
 # =============================================================================
 $ErrorActionPreference = "Stop"
 
 $ScriptDir  = Split-Path -Parent $MyInvocation.MyCommand.Path
 $SshDir     = Join-Path $HOME ".ssh\ai-south-hack"
-$KeyName    = "${team_user}-key"
+$KeyName    = "${team_id}-key"
 $MainConfig = Join-Path $HOME ".ssh\config"
 $IncludeLine = "Include $SshDir\ssh-config"
 
@@ -43,19 +43,19 @@ if ($existing -and $existing.Contains($IncludeLine)) {
 Write-Host "==> Проверяем соединение..."
 $null = & {
   $ErrorActionPreference = "Continue"
-  ssh -o ConnectTimeout=10 -o BatchMode=yes ${team_user} echo OK 2>&1
+  ssh -o ConnectTimeout=10 -o BatchMode=yes ${team_id} echo OK 2>&1
 }
 if ($LASTEXITCODE -eq 0) {
   Write-Host ""
   Write-Host "v  Всё готово! Подключайся командой:" -ForegroundColor Green
   Write-Host ""
-  Write-Host "   ssh ${team_user}" -ForegroundColor Cyan
+  Write-Host "   ssh ${team_id}" -ForegroundColor Cyan
   Write-Host ""
 } else {
   Write-Host ""
   Write-Host "!  Ключи установлены, но соединение не проверено (VM может быть ещё недоступна)." -ForegroundColor Yellow
   Write-Host "   Попробуй подключиться позже:" -ForegroundColor Yellow
   Write-Host ""
-  Write-Host "   ssh ${team_user}" -ForegroundColor Cyan
+  Write-Host "   ssh ${team_id}" -ForegroundColor Cyan
   Write-Host ""
 }

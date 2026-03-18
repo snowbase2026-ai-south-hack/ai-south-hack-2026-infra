@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # =============================================================================
-# AI South Hack — Setup SSH access for ${team_user}
+# AI South Hack — Setup SSH access for ${team_id}
 # =============================================================================
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 SSH_DIR="$HOME/.ssh/ai-south-hack"
-KEY_NAME="${team_user}-key"
+KEY_NAME="${team_id}-key"
 MAIN_CONFIG="$HOME/.ssh/config"
 INCLUDE_LINE="Include $SSH_DIR/ssh-config"
 
@@ -40,17 +40,17 @@ else
 fi
 
 echo "==> Проверяем соединение..."
-if ssh -o ConnectTimeout=10 -o BatchMode=yes ${team_user} echo "OK" 2>/dev/null; then
+if ssh -o ConnectTimeout=10 -o BatchMode=yes ${team_id} echo "OK" 2>/dev/null; then
   echo ""
   echo "v  Всё готово! Подключайся командой:"
   echo ""
-  echo "    ssh ${team_user}"
+  echo "    ssh ${team_id}"
   echo ""
 else
   echo ""
   echo "!  Ключи установлены, но соединение не проверено (VM может быть ещё недоступна)."
   echo "   Попробуй подключиться позже:"
   echo ""
-  echo "    ssh ${team_user}"
+  echo "    ssh ${team_id}"
   echo ""
 fi
