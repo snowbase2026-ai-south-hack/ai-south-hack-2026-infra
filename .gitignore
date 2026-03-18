@@ -45,3 +45,4 @@ ansible/inventory/group_vars/
 # OS
 .DS_Store
 Thumbs.db
+.superpowers/
