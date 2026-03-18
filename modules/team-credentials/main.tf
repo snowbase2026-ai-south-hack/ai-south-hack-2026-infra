@@ -20,6 +20,17 @@ resource "local_file" "team_dir_marker" {
 # Keys
 # =============================================================================
 
+# Rename from team_vm_private_key / team_vm_public_key — preserves state, no file churn.
+moved {
+  from = local_file.team_vm_private_key
+  to   = local_file.team_private_key
+}
+
+moved {
+  from = local_file.team_vm_public_key
+  to   = local_file.team_public_key
+}
+
 resource "local_file" "team_private_key" {
   for_each = var.teams
 
