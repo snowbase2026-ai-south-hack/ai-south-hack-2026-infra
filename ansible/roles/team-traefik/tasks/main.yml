@@ -1,0 +1,32 @@
+---
+- name: Create Docker network traefik
+  community.docker.docker_network:
+    name: traefik
+    state: present
+
+- name: Create Traefik config directory
+  file:
+    path: /etc/traefik
+    state: directory
+    mode: "0755"
+
+- name: Deploy Traefik static config
+  template:
+    src: traefik.yml.j2
+    dest: /etc/traefik/traefik.yml
+    mode: "0644"
+  notify: restart traefik
+
+- name: Run Traefik container
+  community.docker.docker_container:
+    name: traefik
+    image: "traefik:{{ traefik_version }}"
+    state: started
+    restart_policy: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - /etc/traefik/traefik.yml:/etc/traefik/traefik.yml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - name: traefik
