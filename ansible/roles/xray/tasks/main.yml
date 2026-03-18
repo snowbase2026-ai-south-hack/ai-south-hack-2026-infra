@@ -4,18 +4,21 @@
     path: /var/log/xray
     state: directory
     mode: "0755"
+  tags: [xray]
 
 - name: Download Xray
   get_url:
     url: "https://github.com/XTLS/Xray-core/releases/download/v{{ xray_version }}/Xray-linux-64.zip"
     dest: /tmp/xray.zip
     mode: "0644"
+  tags: [xray]
 
 - name: Create Xray directory
   file:
     path: /usr/local/share/xray
     state: directory
     mode: "0755"
+  tags: [xray]
 
 - name: Extract Xray
   unarchive:
@@ -23,33 +26,39 @@
     dest: /usr/local/share/xray
     remote_src: true
   notify: restart xray
+  tags: [xray]
 
 - name: Install libcap2-bin for setcap
   apt:
     name: libcap2-bin
     state: present
+  tags: [xray]
 
 - name: Set CAP_NET_ADMIN for TPROXY
   command: setcap cap_net_admin+ep /usr/local/share/xray/xray
   changed_when: true
+  tags: [xray]
 
 - name: Download geosite.dat
   get_url:
     url: "https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geosite.dat"
     dest: /usr/local/share/xray/geosite.dat
     mode: "0644"
+  tags: [xray]
 
 - name: Download geoip.dat
   get_url:
     url: "https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geoip.dat"
     dest: /usr/local/share/xray/geoip.dat
     mode: "0644"
+  tags: [xray]
 
 - name: Create Xray config directory
   file:
     path: /etc/xray
     state: directory
     mode: "0755"
+  tags: [xray, xray-config]
 
 - name: Deploy Xray config (from secrets/)
   copy:
@@ -57,6 +66,7 @@
     dest: /etc/xray/config.json
     mode: "0600"
   notify: restart xray
+  tags: [xray, xray-config]
 
 - name: Deploy Xray systemd service
   copy:
@@ -79,9 +89,11 @@
   notify:
     - reload systemd
     - restart xray
+  tags: [xray]
 
 - name: Enable and start Xray
   systemd:
     name: xray
     state: started
     enabled: true
+  tags: [xray, xray-config]
