@@ -37,8 +37,16 @@ tls_private_key.team_github_key  → secrets/team-{id}/{user}-deploy-key
 tls_private_key.team_key         → secrets/team-{id}/{user}-key
 ```
 
-`team_vm_key` переименовывается в `team_key` через блок `moved {}` — без пересоздания ресурса.
-`team_jump_key` и `team_github_key` убираются через `terraform state rm` до `apply`.
+`team_vm_key` переименовывается в `team_key` через блок `moved {}` в `environments/dev/main.tf` — без пересоздания ресурса:
+
+```hcl
+moved {
+  from = tls_private_key.team_vm_key
+  to   = tls_private_key.team_key
+}
+```
+
+`team_jump_key` и `team_github_key` убираются через `terraform state rm` до `apply` (см. шаг 4 миграции).
 
 Модуль `team-credentials`: убираем переменные и `local_file` ресурсы для jump-key и github-key.
 
@@ -86,13 +94,16 @@ Host {team_user}
 Заменяет `sync-jump-keys.yml`. Два независимых play, только `authorized_keys` — ничего кроме.
 
 **Play 1 — edge (jump user):**
-- Для каждой команды: добавляет `{user}-key.pub` с ограничениями `command="/bin/false",no-pty,no-X11-forwarding,no-agent-forwarding,permitopen="{private_ip}:22"`.
-- Admin-ключи из `secrets/admin-keys.txt` — без ограничений (полный shell для подключения через edge).
-- Состояние: `exclusive: true` или явное управление — удаляет устаревшие ключи.
+- Читает `secrets/teams-credentials.json` (через `lookup('file', ...)`) для получения списка команд и их IP.
+- Для каждой команды: добавляет `secrets/team-{id}/{user}-key.pub` с ограничениями `command="/bin/false",no-pty,no-X11-forwarding,no-agent-forwarding,permitopen="{private_ip}:22"`.
+- Читает `secrets/admin-keys.txt` построчно (`lookup('file', ...)` + `splitlines()`), добавляет каждый ключ без ограничений (полный shell).
+- Не содержит ролей, handlers или задач помимо `authorized_key`.
 
 **Play 2 — team_vms (team user):**
-- Удостоверяется что `{user}-key.pub` присутствует в `authorized_keys`.
-- Добавляет все admin-ключи из `secrets/admin-keys.txt`.
+- Читает `secrets/admin-keys.txt` построчно (аналогично play 1).
+- Удостоверяется что `{user}-key.pub` присутствует в `authorized_keys` (state: present).
+- Добавляет каждый admin-ключ (state: present).
+- Не содержит ролей, handlers или задач помимо `authorized_key`.
 
 **Запуск:**
 ```bash
@@ -129,10 +140,19 @@ Admin-ключи добавляются на:
 Шаг 2: Написать ansible/playbooks/sync-keys.yml
 Шаг 3: ansible-playbook playbooks/sync-keys.yml
         → admin-ключи добавлены на все VM (страховка доступа)
-Шаг 4: terraform state rm 'module.team_credentials.local_file.team_jump_*'
-        terraform state rm 'module.team_credentials.local_file.team_github_*'
-        terraform state rm 'module.team_credentials.tls_private_key.team_jump_key[*]'  (если в dev)
-        (точные пути уточнить через terraform state list)
+Шаг 4: # Сначала проверить точные пути ресурсов:
+        terraform state list | grep -E 'jump|github'
+
+        # Удалить для каждой команды (ресурсы вида ["team-id"]):
+        # В модуле team-credentials:
+        terraform state rm 'module.team_credentials.local_file.team_jump_private_key["dashboard"]'
+        terraform state rm 'module.team_credentials.local_file.team_jump_public_key["dashboard"]'
+        terraform state rm 'module.team_credentials.local_file.team_github_private_key["dashboard"]'
+        terraform state rm 'module.team_credentials.local_file.team_github_public_key["dashboard"]'
+        # В environments/dev (генерация ключей):
+        terraform state rm 'tls_private_key.team_jump_key["dashboard"]'
+        terraform state rm 'tls_private_key.team_github_key["dashboard"]'
+        # Повторить для каждой команды из var.teams
 Шаг 5: terraform apply
         → moved{} переименует team_vm_key → team_key без пересоздания VM
         → новые secrets-файлы без jump/deploy ключей
@@ -157,7 +177,7 @@ Admin-ключи добавляются на:
 | `modules/team-credentials/main.tf` | убрать jump/github local_file ресурсы |
 | `modules/team-credentials/variables.tf` | убрать jump/github переменные |
 | `modules/team-credentials/main.tf` | обновить teams_credentials.json (убрать jump_key, github_key из files{}) |
-| `templates/team/ssh-config.tpl` | один IdentityFile |
+| `templates/team/ssh-config.tpl` | заменить `-jump-key` на `-key` в строке IdentityFile bastion-хоста; VM-хост уже использует `-key` |
 | `ansible/playbooks/sync-jump-keys.yml` | заменить на sync-keys.yml |
 | `ansible/playbooks/edge.yml` | импорт sync-keys.yml вместо sync-jump-keys.yml |
 | `ansible/playbooks/team-vms.yml` | импорт sync-keys.yml вместо sync-jump-keys.yml |
