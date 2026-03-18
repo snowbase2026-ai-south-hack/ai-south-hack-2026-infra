@@ -91,22 +91,15 @@ locals {
 # SSH Keys Generation for Teams
 # =============================================================================
 
-# Jump keys (for bastion access) - unique per team
-resource "tls_private_key" "team_jump_key" {
+# Single key per team — used for both bastion access (with permitopen) and VM login
+resource "tls_private_key" "team_key" {
   for_each  = var.teams
   algorithm = "ED25519"
 }
 
-# VM keys (for team VM access)
-resource "tls_private_key" "team_vm_key" {
-  for_each  = var.teams
-  algorithm = "ED25519"
-}
-
-# GitHub deploy keys (for CI/CD)
-resource "tls_private_key" "team_github_key" {
-  for_each  = var.teams
-  algorithm = "ED25519"
+moved {
+  from = tls_private_key.team_vm_key
+  to   = tls_private_key.team_key
 }
 
 # =============================================================================
@@ -172,7 +165,7 @@ module "team_vm" {
   security_group_id      = module.security.team_sg_id
   password               = var.vm_password
   team_public_keys = {
-    for team_id, key in tls_private_key.team_vm_key : team_id => key.public_key_openssh
+    for team_id, key in tls_private_key.team_key : team_id => key.public_key_openssh
   }
 
   depends_on = [module.network, module.security]

@@ -20,13 +20,9 @@ module "team_credentials" {
   jump_user  = var.jump_user
   bastion_ip = module.edge.public_ip
 
-  # Pass pre-generated SSH keys
-  team_jump_private_keys   = { for k, v in tls_private_key.team_jump_key : k => v.private_key_openssh }
-  team_jump_public_keys    = { for k, v in tls_private_key.team_jump_key : k => v.public_key_openssh }
-  team_vm_private_keys     = { for k, v in tls_private_key.team_vm_key : k => v.private_key_openssh }
-  team_vm_public_keys      = { for k, v in tls_private_key.team_vm_key : k => v.public_key_openssh }
-  team_github_private_keys = { for k, v in tls_private_key.team_github_key : k => v.private_key_openssh }
-  team_github_public_keys  = { for k, v in tls_private_key.team_github_key : k => v.public_key_openssh }
+  # Single key per team
+  team_private_keys = { for k, v in tls_private_key.team_key : k => v.private_key_openssh }
+  team_public_keys  = { for k, v in tls_private_key.team_key : k => v.public_key_openssh }
 
   depends_on = [module.edge, module.team_vm]
 }
