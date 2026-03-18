@@ -1,4 +1,7 @@
 ---
+# После настройки VM — синхронизируем её jump-ключ на edge, чтобы не запускать edge.yml отдельно
+- import_playbook: sync-keys.yml
+
 - name: Configure team VMs
   hosts: team_vms
   become: true

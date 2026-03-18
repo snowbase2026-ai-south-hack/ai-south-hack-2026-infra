@@ -1,4 +1,7 @@
 ---
+# Сначала прокидываем ключи команд — чтобы jump-доступ работал сразу после настройки edge
+- import_playbook: sync-keys.yml
+
 - name: Configure edge VM
   hosts: edge
   become: true
