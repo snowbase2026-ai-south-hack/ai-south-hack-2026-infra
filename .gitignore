@@ -47,3 +47,23 @@ ansible/inventory/group_vars/
 Thumbs.db
 .superpowers/
 docs/superpowers/
+
+# ── GSD baseline (auto-generated) ──
+.gsd
+*~
+*.code-workspace
+!.env.example
+node_modules/
+.next/
+dist/
+build/
+__pycache__/
+*.pyc
+.venv/
+venv/
+target/
+vendor/
+*.log
+coverage/
+.cache/
+tmp/
