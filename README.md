@@ -1,149 +1,358 @@
-# AI South Hub 2026 — Infrastructure
+# AI South Hub 2026 — Инфраструктура для команд
 
-> Terraform + Ansible инфраструктура для хакатона AI South Hub 2026 на Cloud.ru Evolution
+> Всё, что нужно участникам хакатона: подключение, деплой, AI API, совместная работа.
 
-## Что это
+## Что у вас есть
 
-Проект создаёт управляемую инфраструктуру для проведения хакатона: виртуальные машины для команд, HTTPS reverse proxy, проксирование AI API.
+Каждая команда получает выделенную виртуальную машину в облаке Cloud.ru Evolution:
 
-**Ключевые возможности:**
+| Параметр | Значение |
+|----------|----------|
+| **ОС** | Ubuntu 22.04 LTS |
+| **CPU** | 4 vCPU |
+| **RAM** | 8 GB |
+| **Диск** | 65 GB SSD |
+| **Доступ** | Полный sudo |
+| **Домен** | `{team_id}.south.aitalenthub.ru` (HTTPS, Let's Encrypt) |
 
-- **Edge/NAT сервер** — единственная точка входа с публичным IP и floating IP
-- **Traefik на edge** (Docker, `network_mode: host`) — HTTPS с автоматическим ACME/Let's Encrypt, маршрутизация по поддомену на VM команды
-- **team-traefik на team VM** (Docker) — HTTP-only, docker provider; команды деплоят сервисы через docker labels
-- **Xray** (systemd) — прозрачное проксирование AI API через TPROXY
-- **Team VMs** — отдельная VM для каждой команды (4 vCPU, 8GB RAM, 65GB SSD)
-- **Автоматические credentials** — SSH ключи и setup-скрипты генерируются Terraform
+### Предустановленное ПО
+
+На VM уже установлено и настроено — ничего ставить не нужно:
+
+| Категория | Что установлено |
+|-----------|----------------|
+| **Контейнеры** | Docker Engine, Docker Compose |
+| **Python** | Python 3.12, [uv](https://docs.astral.sh/uv/) (быстрый package manager) |
+| **Node.js** | Node.js 22 LTS (через [nvm](https://github.com/nvm-sh/nvm) в `/opt/nvm`), npm |
+| **Go** | Go 1.24 |
+| **AI-ассистент** | [Claude Code](https://claude.ai/code) (`claude` в терминале) |
+| **Тестирование** | [Playwright](https://playwright.dev/) + Chromium |
+| **Reverse proxy** | Traefik (docker provider) — деплой через docker labels |
+| **Утилиты** | `btop`, `htop`, `bat`, `rg` (ripgrep), `fd`, `jq`, `ncdu`, `tmux`, `tree`, `nmap`, `tcpdump` |
+
+### Алиасы bash
+
+```
+ll → ls -alF    la → ls -A    .. → cd ..    ... → cd ../..
+cat → batcat    fd → fdfind   df → df -h    free → free -h
+```
+
+---
 
 ## Архитектура
-
-### Для команд
 
 ```
 Вы / IDE  ──SSH──►  bastion.south.aitalenthub.ru  ──►  Ваша VM (10.0.1.x)
           ──HTTPS─► {team_id}.south.aitalenthub.ru ──►  team-traefik ──► ваш контейнер
 ```
 
-**Что у вас есть:**
-- Выделенная VM Ubuntu 22.04 (4 vCPU, 8GB RAM, 65GB SSD)
-- SSH доступ через bastion (один ключ `{team_id}-key`)
-- Домен `{team_id}.south.aitalenthub.ru` с HTTPS (Let's Encrypt)
-- Предустановлен Docker + Traefik — деплой через docker labels
-- Доступ в интернет и к AI API через Xray
+- **Edge VM** — единственная точка входа с публичным IP
+- **Traefik на edge** — HTTPS-терминация (Let's Encrypt), маршрутизация `{team_id}.south.aitalenthub.ru` → team VM
+- **team-traefik на вашей VM** — HTTP-only, docker provider; вы деплоите через docker labels
+- **Xray** — прозрачное проксирование AI API через TPROXY
 
-### Для администраторов
+---
 
-Детальная архитектура — [docs/architecture.md](docs/architecture.md)
+## Подключение
 
-## Быстрый старт
+Вы получаете папку `team-{id}/` с SSH ключом и скриптами настройки.
 
-### Для команд участников
-
-Вы получаете папку `team-{id}/` с SSH ключом и скриптами.
+### Настройка (один раз)
 
 **Mac / Linux:**
 ```bash
 cd ~/Downloads/team-{id}
 bash setup.sh
+```
+
+**Windows (CMD):** двойной клик на `setup.bat`
+
+**Windows (PowerShell):** правая кнопка на `setup.ps1` → «Запустить с помощью PowerShell»
+
+> Если ошибка политики выполнения: `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`
+
+Скрипт копирует ключ в `~/.ssh/ai-south-hack/`, добавляет `Include` в `~/.ssh/config` и проверяет соединение.
+
+### Подключение по SSH
+
+```bash
 ssh {team_id}
 ```
 
-**Windows (CMD):**
-Двойной клик на `setup.bat`, затем `ssh {team_id}` в любом терминале.
+### Persistent session через tmux (рекомендуется)
 
-**Windows (PowerShell):**
-Правой кнопкой → «Запустить с помощью PowerShell» на `setup.ps1`.
-
-Подробнее — [docs/quickstart.md](docs/quickstart.md)
-
-### Для администраторов
+Используйте tmux, чтобы сессия не терялась при разрыве соединения:
 
 ```bash
-# 1. Настроить Cloud.ru Evolution credentials
-cd environments/dev
-cp terraform.tfvars.example terraform.tfvars
-# Заполнить project_id, auth_key_id, auth_secret, jump_public_key, teams
-
-# 2. Задеплоить инфраструктуру
-terraform init
-terraform apply
-# Terraform сгенерирует secrets/team-{id}/ для каждой команды
-
-# 3. Создать secrets/admin-keys.txt (SSH публичные ключи администраторов)
-echo "ssh-ed25519 AAAA... admin@example.com" > ../../secrets/admin-keys.txt
-
-# 4. Настроить VM через Ansible
-cd ../../ansible
-ansible-playbook playbooks/edge.yml      # edge: NAT, Traefik, Xray
-ansible-playbook playbooks/team-vms.yml  # команды: маршрут, Docker, team-traefik
+ssh -t {team_id} "tmux new-session -As dev"
 ```
 
-## Работа с доменами
+Эта команда создаёт (или подключается к существующей) сессию `dev`. Если соединение оборвётся — просто выполните команду снова, и вы вернётесь ровно туда, где были.
 
-Каждая команда получает поддомен: **`{team_id}.south.aitalenthub.ru`**
+Claude Code отлично работает внутри tmux — просто запустите `claude` в tmux-сессии.
 
-Домен настроен автоматически через Traefik на edge VM. SSL сертификат выдаётся Let's Encrypt через HTTP-01 challenge.
+### Подключение через VSCode / Cursor
 
-Деплой сервиса командой — через docker labels (подробнее [docs/user-guide.md](docs/user-guide.md#деплой-через-traefik)).
+После выполнения `setup.sh` (или `setup.bat` / `setup.ps1`) SSH конфиг уже добавлен:
 
-## Структура проекта
+1. Установите расширение **Remote - SSH** (`Cmd/Ctrl+Shift+X`)
+2. `Cmd/Ctrl+Shift+P` → `Remote-SSH: Connect to Host...` → выберите `{team_id}`
+3. Откройте папку `/home/{team_id}/` в Explorer
 
-```
-ai-south-hack-2026-infra/
-├── modules/
-│   ├── network/          # Подсеть 10.0.1.0/24
-│   ├── security/         # Security group для team VMs
-│   ├── edge/             # Edge/NAT VM
-│   ├── team_vm/          # VM для команд
-│   └── team-credentials/ # SSH ключи + setup-скрипты
-│
-├── environments/
-│   └── dev/              # Точка входа Terraform
-│
-├── ansible/
-│   ├── playbooks/        # edge.yml, team-vms.yml, sync-keys.yml
-│   └── roles/            # common, docker, nat, traefik, team-traefik, xray
-│
-├── templates/
-│   └── team/             # Шаблоны: ssh-config, setup.sh, setup.bat, setup.ps1, README.md
-│
-├── docs/                 # Документация
-│
-└── secrets/              # Генерируемые ключи и конфиги (gitignored)
-    ├── team-{id}/        # {id}-key, ssh-config, setup.sh, setup.bat, setup.ps1, README.md
-    ├── admin-keys.txt    # Публичные ключи администраторов (создать вручную!)
-    └── teams-credentials.json
+VSCode/Cursor автоматически пробрасывают порты — если запустите приложение на порту 3000, IDE предложит открыть его в браузере.
+
+### Ручная установка (если скрипты не работают)
+
+```bash
+mkdir -p ~/.ssh/ai-south-hack
+cp {team_id}-key     ~/.ssh/ai-south-hack/
+cp {team_id}-key.pub ~/.ssh/ai-south-hack/
+cp ssh-config        ~/.ssh/ai-south-hack/
+chmod 600 ~/.ssh/ai-south-hack/{team_id}-key
+
+# Добавить Include в начало ~/.ssh/config
+echo "Include ~/.ssh/ai-south-hack/ssh-config" | cat - ~/.ssh/config > /tmp/cfg && mv /tmp/cfg ~/.ssh/config
+
+ssh {team_id}
 ```
 
-## Ресурсы
+### Копирование файлов
 
-| Компонент | vCPU | RAM | Disk | Кол-во |
-|-----------|------|-----|------|--------|
-| Edge VM | 2 | 4GB | 20GB SSD | 1 |
-| Team VM | 4 | 8GB | 65GB SSD | По числу команд |
+```bash
+# Загрузить на VM
+scp file.txt {team_id}:~/workspace/
 
-## Документация
+# Скачать с VM
+scp {team_id}:~/workspace/file.txt ./
+```
 
-### Для команд
+---
 
-| Документ | Описание |
-|----------|----------|
-| [quickstart.md](docs/quickstart.md) | Подключение к VM и первое приложение |
-| [user-guide.md](docs/user-guide.md) | Полное руководство: Docker, Traefik, домены, AI API |
+## Деплой приложения
 
-### Для администраторов
+На вашей VM уже запущен Traefik с docker provider. Публикация сервиса — через docker labels. Не нужно настраивать nginx, получать SSL или открывать порты.
 
-| Документ | Описание |
-|----------|----------|
-| [admin-guide.md](docs/admin-guide.md) | Развёртывание и управление инфраструктурой |
-| [architecture.md](docs/architecture.md) | Детальная архитектура |
-| [modules.md](docs/modules.md) | Документация Terraform модулей |
+### Быстрый пример
 
-## Технологии
+Создайте `docker-compose.yml`:
 
-- **IaC:** Terraform (Cloud.ru Evolution provider v1.6.0)
-- **Cloud:** Cloud.ru Evolution
-- **OS:** Ubuntu 22.04 LTS
-- **Reverse Proxy:** Traefik v3 (Docker)
-- **Transparent Proxy:** Xray (systemd)
-- **Automation:** Ansible
+```yaml
+services:
+  app:
+    image: containous/whoami
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.app.rule=PathPrefix(`/`)"
+    networks:
+      - traefik
+
+networks:
+  traefik:
+    external: true
+```
+
+Запустите:
+
+```bash
+docker compose up -d
+```
+
+Через ~10 секунд приложение доступно на `https://{team_id}.south.aitalenthub.ru`.
+
+### Полный пример: FastAPI + PostgreSQL
+
+```yaml
+services:
+  web:
+    build: .
+    restart: always
+    networks:
+      - traefik
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.web.rule=Host(`{team_id}.south.aitalenthub.ru`)"
+      - "traefik.http.services.web.loadbalancer.server.port=8000"
+    environment:
+      - DATABASE_URL=postgresql://user:pass@db:5432/mydb
+    depends_on:
+      - db
+    command: uvicorn main:app --host 0.0.0.0 --port 8000
+
+  db:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: pass
+      POSTGRES_DB: mydb
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
+volumes:
+  postgres-data:
+
+networks:
+  traefik:
+    external: true
+```
+
+### Правила Traefik
+
+- Контейнер **обязательно** в сети `traefik` (`networks: - traefik`)
+- Без `traefik.enable=true` Traefik игнорирует контейнер
+- Укажите `server.port` если контейнер слушает не на порту 80
+- Маппинг `ports:` не нужен — Traefik обращается через Docker-сеть
+
+### Дополнительные поддомены
+
+Кроме основного `{team_id}.south.aitalenthub.ru`, можно использовать поддомены с суффиксом:
+
+| URL | Пример использования |
+|-----|---------------------|
+| `{team_id}.south.aitalenthub.ru` | Главная страница |
+| `api-{team_id}.south.aitalenthub.ru` | API |
+| `n8n-{team_id}.south.aitalenthub.ru` | n8n |
+
+Укажите нужный Host в `traefik.http.routers.*.rule`.
+
+---
+
+## Доступ к AI API
+
+AI API (OpenAI, Anthropic и др.) доступны с вашей VM напрямую — через прозрачный прокси Xray на edge VM. Никаких специальных настроек не нужно.
+
+Просто используйте API ключи как обычно:
+
+```bash
+# Пример: проверка доступа к OpenAI
+curl -I https://api.openai.com
+
+# В коде — стандартные переменные окружения
+export ANTHROPIC_API_KEY="sk-ant-..."
+export OPENAI_API_KEY="sk-..."
+
+# Библиотеки работают без изменений
+python -c "from anthropic import Anthropic; print(Anthropic().messages.create(...))"
+```
+
+Весь трафик к AI API проксируется через Xray (TPROXY) автоматически — вам не нужно указывать прокси.
+
+---
+
+## Совместная работа
+
+Несколько человек могут работать на одной VM одновременно — подключайтесь по SSH с одним и тем же ключом `{team_id}-key`.
+
+### Shared tmux сессия (парная работа)
+
+Один участник создаёт сессию:
+```bash
+ssh -t {team_id} "tmux new-session -As dev"
+```
+
+Другие подключаются к ней:
+```bash
+ssh -t {team_id} "tmux attach -t dev"
+```
+
+Все видят один терминал в реальном времени — удобно для парного программирования и совместной отладки.
+
+### Независимая работа
+
+Каждый может создать свою tmux-сессию:
+```bash
+ssh -t {team_id} "tmux new-session -As myname"
+```
+
+---
+
+## Проверка после подключения
+
+```bash
+# Внешний IP (должен совпадать с edge VM)
+curl ifconfig.co
+
+# Доступ в интернет
+curl -I https://google.com
+
+# Доступ к AI API
+curl -I https://api.openai.com
+
+# Место на диске (ожидается ~55GB свободно)
+df -h
+
+# Docker работает
+docker run --rm hello-world
+```
+
+---
+
+## Troubleshooting
+
+### SSH: не подключается
+
+```bash
+# Диагностика
+ssh -v {team_id}
+
+# Проверить права на ключ
+chmod 600 ~/.ssh/ai-south-hack/{team_id}-key
+
+# Проверить доступность bastion
+ping bastion.south.aitalenthub.ru
+```
+
+### Приложение не доступно по HTTPS
+
+```bash
+# Контейнер запущен?
+docker ps
+
+# Контейнер в сети traefik?
+docker inspect <container> | jq '.[0].NetworkSettings.Networks'
+
+# Labels на месте?
+docker inspect <container> | jq '.[0].Config.Labels'
+```
+
+### Нет места на диске
+
+```bash
+ncdu ~                              # Найти большие директории
+docker system prune -a --volumes    # Очистить Docker
+sudo journalctl --vacuum-time=7d    # Очистить логи
+```
+
+### Docker: Permission denied
+
+```bash
+sudo usermod -aG docker $USER
+# Перезайти по SSH
+```
+
+---
+
+## Полезные команды
+
+```bash
+# Мониторинг
+btop                        # CPU и память
+docker stats                # Ресурсы контейнеров
+
+# Docker
+docker compose logs -f      # Логи всех сервисов
+docker exec -it <c> bash    # Войти в контейнер
+
+# Поиск
+rg "pattern" ./             # Поиск по содержимому (ripgrep)
+fd "*.py" ./                # Поиск файлов
+```
+
+---
+
+## Для администраторов
+
+- [docs/admin-guide.md](docs/admin-guide.md) — развёртывание и управление
+- [docs/architecture.md](docs/architecture.md) — детальная архитектура
+- [docs/modules.md](docs/modules.md) — Terraform модули
+
+Быстрый деплой: `cd environments/dev && terraform init && terraform apply`, затем `cd ansible && ansible-playbook playbooks/edge.yml && ansible-playbook playbooks/team-vms.yml`.
